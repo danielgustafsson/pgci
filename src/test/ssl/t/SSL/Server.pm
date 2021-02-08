@@ -37,7 +37,7 @@ use File::Basename;
 use File::Copy;
 use Test::More;
 use SSL::Backend::OpenSSL qw(get_new_openssl_backend get_openssl_key);
-use SSL::Backend::NSS qw(get_new_nss_backend);
+use SSL::Backend::NSS qw(get_new_nss_backend get_nss_key);
 
 our ($openssl, $nss, $backend);
 
@@ -58,9 +58,8 @@ elsif ($ENV{with_ssl} eq 'nss')
 use Exporter 'import';
 our @EXPORT = qw(
   configure_test_server_for_ssl
-  set_server_cert
   switch_server_cert
-  key
+  sslkey
 );
 
 # Copy a set of files, taking into account wildcards
@@ -79,11 +78,12 @@ sub copy_files
 	return;
 }
 
-sub key
+# Return a sslkey construct for use in a connection string.
+sub sslkey
 {
-	my ($node, $keyfile) = @_;
+	my $keyfile = shift;
 
-	return get_openssl_key($keyfile) if (defined($openssl);
+	return get_openssl_key($keyfile) if (defined($openssl));
 	return get_nss_key($keyfile) if (defined($nss));
 }
 
@@ -168,7 +168,7 @@ sub configure_test_server_for_ssl
 	}
 	elsif (defined($nss))
 	{
-		RecursiveCopy::copypath("ssl/nss", $pgdata . "/nss") if -e "ssl/nss";
+		PostgreSQL::Test::RecursiveCopy::copypath("ssl/nss", $pgdata . "/nss") if -e "ssl/nss";
 	}
 
 	# Stop and restart server to load new listen_addresses.
@@ -193,46 +193,25 @@ sub cleanup
 	$backend->cleanup();
 }
 
-# Change the configuration to use given server cert file,
-sub set_server_cert
+# Change the configuration to use the given set of certificate, key, ca and
+# CRL, and potentially reload the configuration by restarting the server so
+# that the configuration takes effect.  Restarting is the default, passing
+# restart => 'no' opts out of it leaving the server running.
+sub switch_server_cert
 {
-	my $node     = $_[0];
-	my $certfile = $_[1];
-	my $cafile   = $_[2] || "root+client_ca";
-	my $keyfile  = $_[3] || '';
-	my $pwcmd    = $_[4] || '';
-	my $crlfile  = "root+client.crl";
-	my $crldir;
+	my $node   = shift;
+	my %params = @_;
 	my $pgdata = $node->data_dir;
-
-	$keyfile = $certfile if $keyfile eq '';
-
-	# defaults to use crl file
-	if (defined $_[3] || defined $_[4])
-	{
-		$crlfile = $_[3];
-		$crldir  = $_[4];
-	}
 
 	open my $sslconf, '>', "$pgdata/sslconfig.conf";
 	print $sslconf "ssl=on\n";
-	print $sslconf $backend->set_server_cert($certfile, $cafile, $keyfile);
-	print $sslconf "ssl_crl_file='$crlfile'\n" if defined $crlfile;
-	print $sslconf "ssl_crl_dir='$crldir'\n"   if defined $crldir;
-	print $sslconf "ssl_passphrase_command='$pwcmd'\n"
-	  unless $pwcmd eq '';
+	print $sslconf $backend->set_server_cert(\%params);
+	print $sslconf "ssl_passphrase_command='" . $params{passphrase_cmd} . "'\n"
+	  if defined $params{passphrase_cmd};
 	close $sslconf;
-	return;
-}
 
-# Change the configuration to use given server cert file, and reload
-# the server so that the configuration takes effect.
-# Takes the same arguments as set_server_cert, which it calls to do that
-# piece of the work.
-sub switch_server_cert
-{
-	my $node = $_[0];
-	set_server_cert(@_);
+	return if (defined($params{restart}) && $params{restart} eq 'no');
+
 	$node->restart;
 	return;
 }

@@ -43,7 +43,8 @@ NSSFILES := ssl/nss/client_ca.crt.db \
 	ssl/nss/root+server_ca.crt__root+server.crldir.db \
 	ssl/nss/native_ca-root.db \
 	ssl/nss/native_server-root.db \
-	ssl/nss/native_client-root.db
+	ssl/nss/native_client-root.db \
+	ssl/nss/client_ext.crt__client_ext.key.db
 
 nssfiles: $(NSSFILES)
 
@@ -167,6 +168,15 @@ ssl/nss/client.crt__client.key.db: ssl/client.crt
 	certutil -d "sql:$@" -A -n root+server_ca.crt -i ssl/root+server_ca.crt -t "CT,C,C"
 	openssl pkcs12 -export -out ssl/nss/client.pfx -inkey ssl/client.key -in ssl/client.crt -certfile ssl/client_ca.crt -passout pass:
 	pk12util -i ssl/nss/client.pfx -d "sql:$@" -W ''
+
+ssl/nss/client_ext.crt__client_ext.key.db: ssl/client_ext.crt
+	$(MKDIR_P) $@
+	certutil -d "sql:$@" -N --empty-password
+	certutil -d "sql:$@" -A -n ssl/client_ext.crt -i ssl/client_ext.crt -t "CT,C,C"
+	certutil -d "sql:$@" -A -n client_ca.crt -i ssl/client_ca.crt -t "CT,C,C"
+	certutil -d "sql:$@" -A -n root+server_ca.crt -i ssl/root+server_ca.crt -t "CT,C,C"
+	openssl pkcs12 -export -out ssl/nss/client_ext.pfx -inkey ssl/client_ext.key -in ssl/client_ext.crt -certfile ssl/client_ca.crt -passout pass:
+	pk12util -i ssl/nss/client_ext.pfx -d "sql:$@" -W ''
 
 # Client certificate with encrypted key, signed by client CA
 ssl/nss/client.crt__client-encrypted-pem.key.db: ssl/client.crt

@@ -8,12 +8,10 @@ use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
 
-use File::Copy;
-
 use FindBin;
 use lib $FindBin::RealBin;
 
-use SSLServer;
+use SSL::Server;
 
 if ($ENV{with_ssl} ne 'openssl')
 {
@@ -36,39 +34,6 @@ my $SERVERHOSTCIDR = '127.0.0.1/32';
 # Allocation of base connection string shared among multiple tests.
 my $common_connstr;
 
-# The client's private key must not be world-readable, so take a copy
-# of the key stored in the code tree and update its permissions.
-#
-# This changes to using keys stored in a temporary path for the rest of
-# the tests. To get the full path for inclusion in connection strings, the
-# %key hash can be interrogated.
-my $cert_tempdir = PostgreSQL::Test::Utils::tempdir();
-my %key;
-my @keys = (
-	"client.key",               "client-revoked.key",
-	"client-der.key",           "client-encrypted-pem.key",
-	"client-encrypted-der.key", "client-dn.key");
-foreach my $keyfile (@keys)
-{
-	copy("ssl/$keyfile", "$cert_tempdir/$keyfile")
-	  or die
-	  "couldn't copy ssl/$keyfile to $cert_tempdir/$keyfile for permissions change: $!";
-	chmod 0600, "$cert_tempdir/$keyfile"
-	  or die "failed to change permissions on $cert_tempdir/$keyfile: $!";
-	$key{$keyfile} = PostgreSQL::Test::Utils::perl2host("$cert_tempdir/$keyfile");
-	$key{$keyfile} =~ s!\\!/!g if $PostgreSQL::Test::Utils::windows_os;
-}
-
-# Also make a copy of that explicitly world-readable.  We can't
-# necessarily rely on the file in the source tree having those
-# permissions.
-copy("ssl/client.key", "$cert_tempdir/client_wrongperms.key")
-  or die
-  "couldn't copy ssl/client_key to $cert_tempdir/client_wrongperms.key for permission change: $!";
-chmod 0644, "$cert_tempdir/client_wrongperms.key"
-  or die "failed to change permissions on $cert_tempdir/client_wrongperms.key: $!";
-$key{'client_wrongperms.key'} = PostgreSQL::Test::Utils::perl2host("$cert_tempdir/client_wrongperms.key");
-$key{'client_wrongperms.key'} =~ s!\\!/!g if $PostgreSQL::Test::Utils::windows_os;
 #### Set up the server.
 
 note "setting up data directory";
@@ -83,32 +48,22 @@ $node->start;
 
 # Run this before we lock down access below.
 my $result = $node->safe_psql('postgres', "SHOW ssl_library");
-is($result, 'OpenSSL', 'ssl_library parameter');
+is($result, SSL::Server::ssl_library(), 'ssl_library parameter');
 
 configure_test_server_for_ssl($node, $SERVERHOSTADDR, $SERVERHOSTCIDR,
 	'trust');
 
 note "testing password-protected keys";
 
-open my $sslconf, '>', $node->data_dir . "/sslconfig.conf";
-print $sslconf "ssl=on\n";
-print $sslconf "ssl_cert_file='server-cn-only.crt'\n";
-print $sslconf "ssl_key_file='server-password.key'\n";
-print $sslconf "ssl_passphrase_command='echo wrongpassword'\n";
-close $sslconf;
-
+set_server_cert($node, 'server-cn-only', 'root+client_ca',
+				   'server-password', 'echo wrongpassword');
 command_fails(
 	[ 'pg_ctl', '-D', $node->data_dir, '-l', $node->logfile, 'restart' ],
 	'restart fails with password-protected key file with wrong password');
 $node->_update_pid(0);
 
-open $sslconf, '>', $node->data_dir . "/sslconfig.conf";
-print $sslconf "ssl=on\n";
-print $sslconf "ssl_cert_file='server-cn-only.crt'\n";
-print $sslconf "ssl_key_file='server-password.key'\n";
-print $sslconf "ssl_passphrase_command='echo secret1'\n";
-close $sslconf;
-
+set_server_cert($node, 'server-cn-only', 'root+client_ca',
+				'server-password', 'echo secret1');
 command_ok(
 	[ 'pg_ctl', '-D', $node->data_dir, '-l', $node->logfile, 'restart' ],
 	'restart succeeds with password-protected key file');

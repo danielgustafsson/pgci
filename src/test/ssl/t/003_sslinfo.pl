@@ -12,7 +12,7 @@ use File::Copy;
 use FindBin;
 use lib $FindBin::RealBin;
 
-use SSLServer;
+use SSL::Server;
 
 if ($ENV{with_ssl} ne 'openssl')
 {

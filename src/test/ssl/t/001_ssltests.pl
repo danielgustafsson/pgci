@@ -19,12 +19,12 @@ my $nss;
 if ($ENV{with_ssl} eq 'openssl')
 {
 	$openssl = 1;
-	plan tests => 112;
+	plan tests => 144;
 }
 elsif ($ENV{with_ssl} eq 'nss')
 {
 	$nss = 1;
-	plan tests => 112;
+	plan tests => 138;
 }
 else
 {

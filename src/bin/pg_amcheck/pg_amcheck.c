@@ -179,7 +179,7 @@ static void run_command(ParallelSlot *slot, const char *sql);
 static bool verify_heap_slot_handler(PGresult *res, PGconn *conn,
 									 void *context);
 static bool verify_btree_slot_handler(PGresult *res, PGconn *conn, void *context);
-static void help(const char *progname);
+static void help(const char *program_name);
 static void progress_report(uint64 relations_total, uint64 relations_checked,
 							uint64 relpages_total, uint64 relpages_checked,
 							const char *datname, bool force, bool finished);
@@ -1138,14 +1138,14 @@ verify_btree_slot_handler(PGresult *res, PGconn *conn, void *context)
  *
  * Prints help page for the program
  *
- * progname: the name of the executed program, such as "pg_amcheck"
+ * program_name: the name of the executed program, such as "pg_amcheck"
  */
 static void
-help(const char *progname)
+help(const char *program_name)
 {
-	printf(_("%s checks objects in a PostgreSQL database for corruption.\n\n"), progname);
+	printf(_("%s checks objects in a PostgreSQL database for corruption.\n\n"), program_name);
 	printf(_("Usage:\n"));
-	printf(_("  %s [OPTION]... [DBNAME]\n"), progname);
+	printf(_("  %s [OPTION]... [DBNAME]\n"), program_name);
 	printf(_("\nTarget options:\n"));
 	printf(_("  -a, --all                       check all databases\n"));
 	printf(_("  -d, --database=PATTERN          check matching database(s)\n"));

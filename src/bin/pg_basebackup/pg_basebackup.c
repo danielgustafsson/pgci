@@ -174,6 +174,8 @@ static int	bgpipe[2] = {-1, -1};
 /* Handle to child process */
 static pid_t bgchild = -1;
 static bool in_log_streamer = false;
+/* State of child process */
+static sig_atomic_t bgchild_exited = false;
 
 /* End position for xlog streaming, empty string if unknown yet */
 static XLogRecPtr xlogendptr;
@@ -265,6 +267,16 @@ disconnect_atexit(void)
 {
 	if (conn != NULL)
 		PQfinish(conn);
+}
+
+/*
+ * If the bgchild exits prematurely we can abort processing rather than wait
+ * till the backup has finished and error out at that time.
+ */
+static void
+sigchld_handler(SIGNAL_ARGS)
+{
+	bgchild_exited = true;
 }
 
 #ifndef WIN32
@@ -562,17 +574,28 @@ LogStreamerMain(logstreamer_param *param)
 											  stream.do_sync);
 
 	if (!ReceiveXlogStream(param->bgconn, &stream))
-
+	{
 		/*
 		 * Any errors will already have been reported in the function process,
 		 * but we need to tell the parent that we didn't shutdown in a nice
 		 * way.
 		 */
+#ifdef WIN32
+		/*
+		 * In order to signal the main thread of an ungraceful exit we
+		 * set the flag used on Unix to signal SIGCHLD.
+		 */
+		bgchild_exited = true;
+#endif
 		return 1;
+	}
 
 	if (!stream.walmethod->finish())
 	{
 		pg_log_error("could not finish writing WAL files: %m");
+#ifdef WIN32
+		bgchild_exited = true;
+#endif
 		return 1;
 	}
 
@@ -982,6 +1005,12 @@ ReceiveCopyData(PGconn *conn, WriteDataCallback callback,
 		{
 			pg_log_error("could not read COPY data: %s",
 						 PQerrorMessage(conn));
+			exit(1);
+		}
+
+		if (bgchild_exited)
+		{
+			pg_log_error("log streamer child terminated unexpectedly");
 			exit(1);
 		}
 
@@ -2599,6 +2628,15 @@ main(int argc, char **argv)
 		exit(1);
 	}
 	atexit(disconnect_atexit);
+
+#ifndef WIN32
+	/*
+	 * Trap SIGCHLD to be able to handle the WAL stream process exiting. There
+	 * is no SIGCHLD on Windows, there we rely on the background thread setting
+	 * the signal variable on ungraceful exit.
+	 */
+	pqsignal(SIGCHLD, sigchld_handler);
+#endif
 
 	/*
 	 * Set umask so that directories/files are created with the same

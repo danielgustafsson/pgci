@@ -855,7 +855,7 @@ heap_page_prune_execute(Buffer buffer,
 {
 	Page		page = (Page) BufferGetPage(buffer);
 	OffsetNumber *offnum;
-	HeapTupleHeader htup PG_USED_FOR_ASSERTS_ONLY;
+	HeapTupleHeader htup = NULL;
 
 	/* Shouldn't be called unless there's something to do */
 	Assert(nredirected > 0 || ndead > 0 || nunused > 0);
@@ -867,7 +867,7 @@ heap_page_prune_execute(Buffer buffer,
 		OffsetNumber fromoff = *offnum++;
 		OffsetNumber tooff = *offnum++;
 		ItemId		fromlp = PageGetItemId(page, fromoff);
-		ItemId		tolp PG_USED_FOR_ASSERTS_ONLY;
+		ItemId		tolp = NULL;
 
 #ifdef USE_ASSERT_CHECKING
 

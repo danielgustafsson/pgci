@@ -1235,9 +1235,14 @@ initialize_SSL(PGconn *conn)
 
 		if (stat(fnbuf, &buf) != 0)
 		{
-			appendPQExpBuffer(&conn->errorMessage,
-							  libpq_gettext("certificate present, but not private key file \"%s\"\n"),
-							  fnbuf);
+			if (errno == ENOENT)
+				appendPQExpBuffer(&conn->errorMessage,
+								  libpq_gettext("certificate present, but not private key file \"%s\"\n"),
+								  fnbuf);
+			else
+				appendPQExpBuffer(&conn->errorMessage,
+								  libpq_gettext("could not stat key file \"%s\": %s\n"),
+								  fnbuf, strerror_r(errno, sebuf, sizeof(sebuf)));
 			return -1;
 		}
 #ifndef WIN32

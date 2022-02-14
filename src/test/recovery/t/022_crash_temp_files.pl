@@ -9,7 +9,7 @@ use PostgreSQL::Test::Utils;
 use Test::More;
 use Config;
 
-if ($Config{osname} eq 'MSWin32')
+if ($windows_os)
 {
 	plan skip_all => 'tests hang on Windows';
 	exit;

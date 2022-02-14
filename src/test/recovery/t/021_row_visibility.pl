@@ -183,7 +183,7 @@ sub send_query_and_wait
 	while (1)
 	{
 		# See PostgreSQL::Test::Cluster.pm's psql()
-		$$psql{stdout} =~ s/\r\n/\n/g if $Config{osname} eq 'msys';
+		$$psql{stdout} =~ s/\r\n/\n/g if $windows_os;
 
 		last if $$psql{stdout} =~ /$untl/;
 

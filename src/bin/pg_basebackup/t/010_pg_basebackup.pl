@@ -803,7 +803,7 @@ my $sigchld_bb = IPC::Run::start(
 is($node->poll_query_until('postgres',
 	"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE " .
 	"application_name = '010_pg_basebackup.pl' AND wait_event = 'WalSenderMain' " .
-	"AND backend_type = 'walsender' AND query ~ 'START_REPLICATION"),
+	"AND backend_type = 'walsender' AND query ~ 'START_REPLICATION'"),
 	"1",
 	"Walsender killed");
 

@@ -102,7 +102,7 @@ sub check_query
 	  ],
 	  '>', \$stdout, '2>', \$stderr;
 
-	is($result, 0, "$test_name: psql exit code");
+	is($result, 1, "$test_name: psql exit code");
 	is($stderr, '', "$test_name: psql no stderr");
 	is($stdout, $expected_stdout, "$test_name: query result matches");
 

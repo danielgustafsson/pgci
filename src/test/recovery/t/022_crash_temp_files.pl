@@ -7,7 +7,6 @@ use warnings;
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
-use Config;
 
 if ($Config{osname} eq 'MSWin32')
 {

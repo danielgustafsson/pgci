@@ -3494,6 +3494,13 @@ error_return:
 	if (view_def)
 		free(view_def);
 
+	if (tableinfo.reloptions)
+		free(tableinfo.reloptions);
+	if (tableinfo.reloftype)
+		free(tableinfo.reloftype);
+	if (tableinfo.relam)
+		free(tableinfo.relam);
+
 	if (res)
 		PQclear(res);
 

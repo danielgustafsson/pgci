@@ -76,13 +76,8 @@
    </para>
 
    <para>
-    The text browsing tools <application>more</application> and
-    <application>less</application> can be invoked as:
-<programlisting>
-more -x4
-less -x4
-</programlisting>
-    to make them show tabs appropriately.
+    The text browsing tool <application>less</application> can be invoked as:
+    <literal>less -x4</literal> to show tabs appropriately.
    </para>
   </sect1>
 

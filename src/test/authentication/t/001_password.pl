@@ -106,7 +106,7 @@ is($res, 'SCRAM-SHA-256$1024:', 'scram_iterations in server side ROLE');
 # calculating SCRAM secrets.
 my $session = $node->interactive_psql('postgres');
 
-$session->set_query_timer_restart();
+#$session->set_query_timer_restart();
 $session->query("SET password_encryption='scram-sha-256';");
 $session->query("SET scram_iterations=42;");
 $session->query_until(qr/Enter new password/, "\\password scram_role_iter\n");

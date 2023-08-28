@@ -32,6 +32,7 @@
 #include "common/username.h"
 #include "getopt_long.h"
 #include "lib/stringinfo.h"
+#include "libpq-fe.h"
 #include "libpq/pqcomm.h"		/* needed for UNIXSOCK_PATH() */
 #include "pg_config_paths.h"
 #include "pg_regress.h"
@@ -75,6 +76,12 @@ const char *pretty_diff_opts = "-w -U3";
  */
 #define TESTNAME_WIDTH 36
 
+/*
+ * The number times per second that pg_regress checks to see if the test
+ * instance server has started and is available for connection.
+ */
+#define WAIT_TICKS_PER_SECOND 20
+
 typedef enum TAPtype
 {
 	DIAG = 0,
@@ -107,6 +114,7 @@ static bool nolocale = false;
 static bool use_existing = false;
 static char *hostname = NULL;
 static int	port = -1;
+static char portstr[16];
 static bool port_specified_by_user = false;
 static char *dlpath = PKGLIBDIR;
 static char *user = NULL;
@@ -880,11 +888,18 @@ initialize_environment(void)
 		pgport = getenv("PGPORT");
 		if (!pghost)
 		{
-			/* Keep this bit in sync with libpq's default host location: */
-			if (DEFAULT_PGSOCKET_DIR[0])
-				 /* do nothing, we'll print "Unix socket" below */ ;
+
+			sockdir = getenv("PG_REGRESS_SOCK_DIR");
+			if (sockdir)
+				setenv("PGHOST", sockdir, 1);
 			else
-				pghost = "localhost";	/* DefaultHost in fe-connect.c */
+			{
+				/* Keep this bit in sync with libpq's default host location: */
+				if (DEFAULT_PGSOCKET_DIR[0])
+					 /* do nothing, we'll print "Unix socket" below */ ;
+				else
+					pghost = "localhost";	/* DefaultHost in fe-connect.c */
+			}
 		}
 
 		if (pghost && pgport)
@@ -2107,7 +2122,10 @@ regression_main(int argc, char *argv[],
 	int			i;
 	int			option_index;
 	char		buf[MAXPGPATH * 4];
-	char		buf2[MAXPGPATH * 4];
+	instr_time	starttime;
+	instr_time	stoptime;
+
+	INSTR_TIME_SET_CURRENT(starttime);
 
 	pg_logging_init(argv[0]);
 	progname = get_progname(argv[0]);
@@ -2296,6 +2314,8 @@ regression_main(int argc, char *argv[],
 		const char *env_wait;
 		int			wait_seconds;
 		const char *initdb_template_dir;
+ 		const char *keywords[4];
+ 		const char *values[4];
 
 		/*
 		 * Prepare the temp instance
@@ -2435,22 +2455,30 @@ regression_main(int argc, char *argv[],
 		}
 #endif
 
+		sprintf(portstr, "%d", port);
+
+		/*
+		 * Prepare the connection params for checking the state of the server
+		 * before starting the tests.
+		 */
+		keywords[0] = "dbname";
+		values[0] = "postgres";
+		keywords[1] = "port";
+		values[1] = portstr;
+		keywords[2] = "host";
+		values[2] = hostname ? hostname : sockdir;
+		keywords[3] = NULL;
+		values[3] = NULL;
+
 		/*
 		 * Check if there is a postmaster running already.
 		 */
-		snprintf(buf2, sizeof(buf2),
-				 "\"%s%spsql\" -X postgres <%s 2>%s",
-				 bindir ? bindir : "",
-				 bindir ? "/" : "",
-				 DEVNULL, DEVNULL);
-
 		for (i = 0; i < 16; i++)
 		{
-			fflush(NULL);
-			if (system(buf2) == 0)
-			{
-				char		s[16];
+			PGPing rv = PQpingParams(keywords, values, 1);
 
+			if (rv == PQPING_OK)
+			{
 				if (port_specified_by_user || i == 15)
 				{
 					note("port %d apparently in use", port);
@@ -2461,8 +2489,8 @@ regression_main(int argc, char *argv[],
 
 				note("port %d apparently in use, trying %d", port, port + 1);
 				port++;
-				sprintf(s, "%d", port);
-				setenv("PGPORT", s, 1);
+				sprintf(portstr, "%d", port);
+				setenv("PGPORT", portstr, 1);
 			}
 			else
 				break;
@@ -2485,11 +2513,11 @@ regression_main(int argc, char *argv[],
 			bail("could not spawn postmaster: %s", strerror(errno));
 
 		/*
-		 * Wait till postmaster is able to accept connections; normally this
-		 * is only a second or so, but Cygwin is reportedly *much* slower, and
-		 * test builds using Valgrind or similar tools might be too.  Hence,
-		 * allow the default timeout of 60 seconds to be overridden from the
-		 * PGCTLTIMEOUT environment variable.
+		 * Wait till postmaster is able to accept connections; normally takes
+		 * only a fraction of a second or so, but Cygwin is reportedly *much*
+		 * slower, and test builds using Valgrind or similar tools might be
+		 * too.  Hence, allow the default timeout of 60 seconds to be
+		 * overridden from the PGCTLTIMEOUT environment variable.
 		 */
 		env_wait = getenv("PGCTLTIMEOUT");
 		if (env_wait != NULL)
@@ -2501,12 +2529,23 @@ regression_main(int argc, char *argv[],
 		else
 			wait_seconds = 60;
 
-		for (i = 0; i < wait_seconds; i++)
+		for (i = 0; i < wait_seconds * WAIT_TICKS_PER_SECOND; i++)
 		{
-			/* Done if psql succeeds */
-			fflush(NULL);
-			if (system(buf2) == 0)
+			/*
+			 * It's fairly unlikely that the server is responding immediately
+			 * so we start with sleeping before checking instead of the other
+			 * way around.
+			 */
+			pg_usleep(1000000L / WAIT_TICKS_PER_SECOND);
+
+			PGPing rv = PQpingParams(keywords, values, 1);
+
+			/* Done if the server is running and accepts connections */
+			if (rv == PQPING_OK)
 				break;
+
+			if (rv == PQPING_NO_ATTEMPT)
+				bail("attempting to connect to postmaster failed");
 
 			/*
 			 * Fail immediately if postmaster has exited
@@ -2520,10 +2559,8 @@ regression_main(int argc, char *argv[],
 				bail("postmaster failed, examine \"%s/log/postmaster.log\" for the reason",
 					 outputdir);
 			}
-
-			pg_usleep(1000000L);
 		}
-		if (i >= wait_seconds)
+		if (i >= wait_seconds * WAIT_TICKS_PER_SECOND)
 		{
 			diag("postmaster did not respond within %d seconds, examine \"%s/log/postmaster.log\" for the reason",
 				 wait_seconds, outputdir);
@@ -2562,7 +2599,7 @@ regression_main(int argc, char *argv[],
 		 * Using an existing installation, so may need to get rid of
 		 * pre-existing database(s) and role(s)
 		 */
-		if (!use_existing)
+		if (use_existing)
 		{
 			for (sl = dblist; sl; sl = sl->next)
 				drop_database_if_exists(sl->str);
@@ -2574,13 +2611,17 @@ regression_main(int argc, char *argv[],
 	/*
 	 * Create the test database(s) and role(s)
 	 */
-	if (!use_existing)
-	{
-		for (sl = dblist; sl; sl = sl->next)
-			create_database(sl->str);
-		for (sl = extraroles; sl; sl = sl->next)
-			create_role(sl->str, dblist);
-	}
+	for (sl = dblist; sl; sl = sl->next)
+		create_database(sl->str);
+	for (sl = extraroles; sl; sl = sl->next)
+		create_role(sl->str, dblist);
+
+	/*
+	 * Report how much time we spent during instance setup.
+	 */
+	INSTR_TIME_SET_CURRENT(stoptime);
+	INSTR_TIME_SUBTRACT(stoptime, starttime);
+	diag("Time to first test: %.0f ms", INSTR_TIME_GET_MILLISEC(stoptime));
 
 	/*
 	 * Ready to run the tests

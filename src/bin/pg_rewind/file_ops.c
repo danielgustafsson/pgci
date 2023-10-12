@@ -398,6 +398,10 @@ recurse_dir(const char *datadir, const char *parentpath,
 			strcmp(xlde->d_name, "..") == 0)
 			continue;
 
+		/* Skip macOS system files */
+		if (strcmp(xlde->d_name, ".DS_Store") == 0)
+			continue;
+
 		snprintf(fullpath, sizeof(fullpath), "%s/%s", fullparentpath, xlde->d_name);
 
 		if (lstat(fullpath, &fst) < 0)

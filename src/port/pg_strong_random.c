@@ -56,9 +56,9 @@ void
 pg_strong_random_init(void)
 {
 	/*
-	 * Make sure processes do not share OpenSSL randomness state.  This is no
-	 * longer required in OpenSSL 1.1.1 and later versions, but until we drop
-	 * support for version < 1.1.1 we need to do this.
+	 * Make sure processes do not share OpenSSL randomness state.  This is in
+	 * theory no longer be required in OpenSSL 1.1.1 and later versions, but
+	 * there is no harm in taking extra precautions.
 	 */
 	RAND_poll();
 }

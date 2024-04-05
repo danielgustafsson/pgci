@@ -1286,7 +1286,7 @@ choke me
 '''
       if not cc.compiles(compat_test_code,
           name: 'OpenSSL implementation compatible',
-          args: test_c_args, dependencies: ssl_int)
+          args: test_c_args, dependencies: ssl_int, header_include_directories: postgres_inc)
         error('OpenSSL 1.1.1 or later is required')
       endif
 

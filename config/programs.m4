@@ -143,6 +143,31 @@ if test "$pgac_cv_ldap_safe" != yes; then
 fi])
 
 
+# PGAC_CHECK_OPENSSL
+# ------------------
+# Check for OpenSSL being at least version 1.1.1 and LibreSSL being at least
+# version 3.3.2 (which shipped in OpenBSD 6.9).  The actual version number
+# found is not recorded, instead we gate functionality based on capabilities to
+# avoid having to check multiple version numbers in the code.
+AC_DEFUN([PGAC_CHECK_OPENSSL],
+[AC_CACHE_CHECK([for compatible OpenSSL installation], [pgac_cv_openssl_safe],
+[AC_COMPILE_IFELSE([AC_LANG_PROGRAM(
+[#include <openssl/opensslv.h>
+#if ((OPENSSL_VERSION_NUMBER == 0x20000000) && \
+	(defined(LIBRESSL_VERSION_NUMBER) && \
+	LIBRESSL_VERSION_NUMBER < 0x3030200fL))
+choke me
+#endif
+#if (OPENSSL_VERSION_NUMBER < 0x10101000L)
+choke me
+#endif], [])],
+[pgac_cv_openssl_safe=yes],
+[pgac_cv_openssl_safe=no])])
+
+if test "$pgac_cv_openssl_safe" != yes; then
+  AC_MSG_ERROR([OpenSSL 1.1.1 or later is required.])
+fi])
+
 
 # PGAC_CHECK_READLINE
 # -------------------

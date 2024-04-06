@@ -1268,30 +1268,18 @@ if sslopt in ['auto', 'openssl']
   endif
 
   if ssl.found()
+
     check_funcs = [
       ['CRYPTO_new_ex_data', {'required': true}],
       ['SSL_new', {'required': true}],
 
+      # Function introduced in OpenSSL 1.1.1 and LibreSSL 3.3.2
+      ['EVP_PKEY_new_CMAC_key'],
+
       # Function introduced in OpenSSL 1.0.2, not in LibreSSL.
       ['SSL_CTX_set_cert_cb'],
 
-      # Functions introduced in OpenSSL 1.1.0. We used to check for
-      # OPENSSL_VERSION_NUMBER, but that didn't work with 1.1.0, because LibreSSL
-      # defines OPENSSL_VERSION_NUMBER to claim version 2.0.0, even though it
-      # doesn't have these OpenSSL 1.1.0 functions. So check for individual
-      # functions.
-      ['OPENSSL_init_ssl'],
-      ['BIO_meth_new'],
-      ['ASN1_STRING_get0_data'],
-      ['HMAC_CTX_new'],
-      ['HMAC_CTX_free'],
-
-      # OpenSSL versions before 1.1.0 required setting callback functions, for
-      # thread-safety. In 1.1.0, it's no longer required, and CRYPTO_lock()
-      # function was removed.
-      ['CRYPTO_lock'],
-
-      # Function introduced in OpenSSL 1.1.1
+      # Function introduced in OpenSSL 1.1.1, not in LibreSSL
       ['X509_get_signature_info'],
     ]
 
@@ -1314,7 +1302,10 @@ if sslopt in ['auto', 'openssl']
     if are_openssl_funcs_complete
       cdata.set('USE_OPENSSL', 1,
                 description: 'Define to 1 to build with OpenSSL support. (-Dssl=openssl)')
-      cdata.set('OPENSSL_API_COMPAT', '0x10002000L',
+	  # Minimum required OpenSSL version is 1.1.1, but we set 1.1.0 as the
+	  # deprecation level since 1.1.1 wasn't defined as a deprecation point by
+	  # OpenSSL
+      cdata.set('OPENSSL_API_COMPAT', '0x10100000L',
                 description: 'Define to the OpenSSL API version in use. This avoids deprecation warnings from newer OpenSSL versions.')
       ssl_library = 'openssl'
     else

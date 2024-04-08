@@ -20,9 +20,13 @@ Also, to use "make installcheck", you must have built and installed
 contrib/sslinfo in addition to the core code.
 
 Run
+
     make check PG_TEST_EXTRA=ssl
+
 or
+
     make installcheck PG_TEST_EXTRA=ssl
+
 You can use "make installcheck" if you previously did "make install".
 In that case, the code in the installation tree is tested.  With
 "make check", a temporary installation tree is built from the current
@@ -78,10 +82,10 @@ root+server_ca
 	Contains root_crt and server_ca.crt. For use as client's "sslrootcert"
 	option.
 
-root+client_ca
+* root+client_ca
 	Contains root_crt and client_ca.crt. For use as server's "ssl_ca_file".
 
-client+client_ca
+* client+client_ca
 	Contains client.crt and client_ca.crt in that order. For use as client's
 	certificate chain.
 

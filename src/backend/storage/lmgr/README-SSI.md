@@ -414,14 +414,14 @@ to be added from scratch.
 
 2. The existing in-memory lock structures were not suitable for
 tracking SIREAD locks.
-          * In PostgreSQL, tuple level locks are not held in RAM for
+- In PostgreSQL, tuple level locks are not held in RAM for
 any length of time; lock information is written to the tuples
 involved in the transactions.
-          * In PostgreSQL, existing lock structures have pointers to
+- In PostgreSQL, existing lock structures have pointers to
 memory which is related to a session. SIREAD locks need to persist
 past the end of the originating transaction and even the session
 which ran it.
-          * PostgreSQL needs to be able to tolerate a large number of
+- PostgreSQL needs to be able to tolerate a large number of
 transactions executing while one long-running transaction stays open
 -- the in-RAM techniques discussed in the papers wouldn't support
 that.

@@ -14,10 +14,14 @@ ECPG modifies and extends the core grammar in a way that
    actions for grammar rules.
 
 In "ecpg.addons", every modified rule follows this pattern:
+
        ECPG: dumpedtokens postfix
+
 where "dumpedtokens" is simply tokens from core gram.y's
 rules concatenated together. e.g. if gram.y has this:
-       ruleA: tokenA tokenB tokenC {...}
+
+	ruleA: tokenA tokenB tokenC {...}
+
 then "dumpedtokens" is "ruleAtokenAtokenBtokenC".
 "postfix" above can be:
 a) "block" - the automatic rule created by parse.pl is completely
@@ -25,14 +29,18 @@ a) "block" - the automatic rule created by parse.pl is completely
     it were in a plain bison grammar
 b) "rule" - the automatic rule is extended on, so new syntaxes
     are accepted for "ruleA". E.g.:
+
       ECPG: ruleAtokenAtokenBtokenC rule
           | tokenD tokenE { action_code; }
           ...
+
     It will be substituted with:
+
       ruleA: <original syntax forms and actions up to and including
                     "tokenA tokenB tokenC">
              | tokenD tokenE { action_code; }
              ...
+
 c) "addon" - the automatic action for the rule (SQL syntax constructed
     from the tokens concatenated together) is prepended with a new
     action code part. This code part is written as is's already inside

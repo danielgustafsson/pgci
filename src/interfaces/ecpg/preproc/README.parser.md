@@ -25,10 +25,10 @@ rules concatenated together. e.g. if gram.y has this:
 then "dumpedtokens" is "ruleAtokenAtokenBtokenC".
 "postfix" above can be:
 
-a "block" - the automatic rule created by parse.pl is completely
+* "block" - the automatic rule created by parse.pl is completely
   overridden, the code block has to be written completely as
   it were in a plain bison grammar
-b "rule" - the automatic rule is extended on, so new syntaxes
+* "rule" - the automatic rule is extended on, so new syntaxes
   are accepted for "ruleA". E.g.:
 
       ECPG: ruleAtokenAtokenBtokenC rule
@@ -42,7 +42,7 @@ b "rule" - the automatic rule is extended on, so new syntaxes
              | tokenD tokenE { action_code; }
              ...
 
-c "addon" - the automatic action for the rule (SQL syntax constructed
+* "addon" - the automatic action for the rule (SQL syntax constructed
   from the tokens concatenated together) is prepended with a new
   action code part. This code part is written as is's already inside
   the { ... }

@@ -26,10 +26,10 @@ then "dumpedtokens" is "ruleAtokenAtokenBtokenC".
 "postfix" above can be:
 
 a) "block" - the automatic rule created by parse.pl is completely
-overridden, the code block has to be written completely as
-it were in a plain bison grammar
+  overridden, the code block has to be written completely as
+  it were in a plain bison grammar
 b) "rule" - the automatic rule is extended on, so new syntaxes
-are accepted for "ruleA". E.g.:
+  are accepted for "ruleA". E.g.:
 
       ECPG: ruleAtokenAtokenBtokenC rule
           | tokenD tokenE { action_code; }

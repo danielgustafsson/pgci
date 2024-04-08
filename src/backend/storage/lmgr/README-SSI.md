@@ -476,6 +476,7 @@ row.  We don't try to copy or expand a tuple lock to any other
 versions of the row, based on the following proof that any additional
 serialization failures we would get from that would be false
 positives:
+
   - If transaction T1 reads a row version (thus acquiring a
 predicate lock on it) and a second transaction T2 updates that row
 version (thus creating a rw-conflict graph edge from T1 to T2), must a
@@ -483,14 +484,14 @@ third transaction T3 which re-updates the new version of the row also
 have a rw-conflict in from T1 to prevent anomalies?  In other words,
 does it matter whether we recognize the edge T1 -> T3?
 
-- If T1 has a conflict in, it certainly doesn't. Adding the
+  - If T1 has a conflict in, it certainly doesn't. Adding the
 edge T1 -> T3 would create a dangerous structure, but we already had
 one from the edge T1 -> T2, so we would have aborted something anyway.
 (T2 has already committed, else T3 could not have updated its output;
 but we would have aborted either T1 or T1's predecessor(s).  Hence
 no cycle involving T1 and T3 can survive.)
 
-- Now let's consider the case where T1 doesn't have a
+  - Now let's consider the case where T1 doesn't have a
 rw-conflict in. If that's the case, for this edge T1 -> T3 to make a
 difference, T3 must have a rw-conflict out that induces a cycle in the
 dependency graph, i.e. a conflict out to some transaction preceding T1
@@ -498,22 +499,22 @@ in the graph. (A conflict out to T1 itself would be problematic too,
 but that would mean T1 has a conflict in, the case we already
 eliminated.)
 
-- So now we're trying to figure out if there can be an
+  - So now we're trying to figure out if there can be an
 rw-conflict edge T3 -> T0, where T0 is some transaction that precedes
 T1. For T0 to precede T1, there has to be some edge, or sequence of
 edges, from T0 to T1. At least the last edge has to be a wr-dependency
 or ww-dependency rather than a rw-conflict, because T1 doesn't have a
 rw-conflict in. And that gives us enough information about the order
 of transactions to see that T3 can't have a rw-conflict to T0:
- - T0 committed before T1 started (the wr/ww-dependency implies this)
- - T1 started before T2 committed (the T1->T2 rw-conflict implies this)
- - T2 committed before T3 started (otherwise, T3 would get aborted
+    - T0 committed before T1 started (the wr/ww-dependency implies this)
+    - T1 started before T2 committed (the T1->T2 rw-conflict implies this)
+    - T2 committed before T3 started (otherwise, T3 would get aborted
                                    because of an update conflict)
 
-- That means T0 committed before T3 started, and therefore
+  - That means T0 committed before T3 started, and therefore
 there can't be a rw-conflict from T3 to T0.
 
-- So in all cases, we don't need the T1 -> T3 edge to
+  - So in all cases, we don't need the T1 -> T3 edge to
 recognize cycles.  Therefore it's not necessary for T1's SIREAD lock
 on the original tuple version to cover later versions as well.
 

@@ -199,24 +199,24 @@ The PostgreSQL implementation uses two additional optimizations:
 PostgreSQL Implementation
 -------------------------
 
-    * Since this technique is based on Snapshot Isolation (SI), those
+* Since this technique is based on Snapshot Isolation (SI), those
 areas in PostgreSQL which don't use SI can't be brought under SSI.
 This includes system tables, temporary tables, sequences, hint bit
 rewrites, etc.  SSI can not eliminate existing anomalies in these
 areas.
 
-    * Any transaction which is run at a transaction isolation level
+* Any transaction which is run at a transaction isolation level
 other than SERIALIZABLE will not be affected by SSI.  If you want to
 enforce business rules through SSI, all transactions should be run at
 the SERIALIZABLE transaction isolation level, and that should
 probably be set as the default.
 
-    * If all transactions are run at the SERIALIZABLE transaction
+* If all transactions are run at the SERIALIZABLE transaction
 isolation level, business rules can be enforced in triggers or
 application code without ever having a need to acquire an explicit
 lock or to use SELECT FOR SHARE or SELECT FOR UPDATE.
 
-    * Those who want to continue to use snapshot isolation without
+* Those who want to continue to use snapshot isolation without
 the additional protections of SSI (and the associated costs of
 enforcing those protections), can use the REPEATABLE READ transaction
 isolation level.  This level retains its legacy behavior, which
@@ -224,21 +224,21 @@ is identical to the old SERIALIZABLE implementation and fully
 consistent with the standard's requirements for the REPEATABLE READ
 transaction isolation level.
 
-    * Performance under this SSI implementation will be significantly
+* Performance under this SSI implementation will be significantly
 improved if transactions which don't modify permanent tables are
 declared to be READ ONLY before they begin reading data.
 
-    * Performance under SSI will tend to degrade more rapidly with a
+* Performance under SSI will tend to degrade more rapidly with a
 large number of active database transactions than under less strict
 isolation levels.  Limiting the number of active transactions through
 use of a connection pool or similar techniques may be necessary to
 maintain good performance.
 
-    * Any transaction which must be rolled back to prevent
+* Any transaction which must be rolled back to prevent
 serialization anomalies will fail with SQLSTATE 40001, which has a
 standard meaning of "serialization failure".
 
-    * This SSI implementation makes an effort to choose the
+* This SSI implementation makes an effort to choose the
 transaction to be canceled such that an immediate retry of the
 transaction will not fail due to conflicts with exactly the same
 transactions.  Pursuant to this goal, no transaction is canceled

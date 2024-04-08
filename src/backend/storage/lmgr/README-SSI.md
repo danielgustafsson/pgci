@@ -303,20 +303,20 @@ Heap locking
 
 Predicate locks will be acquired for the heap based on the following:
 
-    * For a table scan, the entire relation will be locked.
+* For a table scan, the entire relation will be locked.
 
-    * Each tuple read which is visible to the reading transaction
+* Each tuple read which is visible to the reading transaction
 will be locked, whether or not it meets selection criteria; except
 that there is no need to acquire an SIREAD lock on a tuple when the
 transaction already holds a write lock on any tuple representing the
 row, since a rw-conflict would also create a ww-dependency which
 has more aggressive enforcement and thus will prevent any anomaly.
 
-    * Modifying a heap tuple creates a rw-conflict with any transaction
+* Modifying a heap tuple creates a rw-conflict with any transaction
 that holds a SIREAD lock on that tuple, or on the page or relation
 that contains it.
 
-    * Inserting a new tuple creates a rw-conflict with any transaction
+* Inserting a new tuple creates a rw-conflict with any transaction
 holding a SIREAD lock on the entire relation. It doesn't conflict with
 page-level locks, because page-level locks are only used to aggregate
 tuple locks. Unlike index page locks, they don't lock "gaps" on the page.
@@ -346,34 +346,34 @@ false positives, they should be minimized for performance reasons.
 
 Several optimizations are possible, though not all are implemented yet:
 
-    * An index scan which is just finding the right position for an
+* An index scan which is just finding the right position for an
 index insertion or deletion need not acquire a predicate lock.
 
-    * An index scan which is comparing for equality on the entire key
+* An index scan which is comparing for equality on the entire key
 for a unique index need not acquire a predicate lock as long as a key
 is found corresponding to a visible tuple which has not been modified
 by another transaction -- there are no "between or around" gaps to
 cover.
 
-    * As long as built-in foreign key enforcement continues to use
+* As long as built-in foreign key enforcement continues to use
 its current "special tricks" to deal with MVCC issues, predicate
 locks should not be needed for scans done by enforcement code.
 
-    * If a search determines that no rows can be found regardless of
+* If a search determines that no rows can be found regardless of
 index contents because the search conditions are contradictory (e.g.,
 x = 1 AND x = 2), then no predicate lock is needed.
 
 Other index AM implementation considerations:
 
-    * For an index AM that doesn't have support for predicate locking,
+* For an index AM that doesn't have support for predicate locking,
 we just acquire a predicate lock on the whole index for any search.
 
-    * B-tree index searches acquire predicate locks only on the
+* B-tree index searches acquire predicate locks only on the
 index *leaf* pages needed to lock the appropriate index range. If,
 however, a search discovers that no root page has yet been created, a
 predicate lock on the index relation is required.
 
-    * Like a B-tree, GIN searches acquire predicate locks only on the
+* Like a B-tree, GIN searches acquire predicate locks only on the
 leaf pages of entry tree. When performing an equality scan, and an
 entry has a posting tree, the posting tree root is locked instead, to
 lock only that key value. However, fastupdate=on postpones the
@@ -382,7 +382,7 @@ into pending list. That makes us unable to detect r-w conflicts using
 page-level locks. To cope with that, insertions to the pending list
 conflict with all scans.
 
-    * GiST searches can determine that there are no matches at any
+* GiST searches can determine that there are no matches at any
 level of the index, so we acquire predicate lock at each index
 level during a GiST search. An index insert at the leaf level can
 then be trusted to ripple up to all levels and locations where
@@ -390,13 +390,13 @@ conflicting predicate locks may exist. In case there is a page split,
 we need to copy predicate lock from the original page to all the new
 pages.
 
-    * Hash index searches acquire predicate locks on the primary
+* Hash index searches acquire predicate locks on the primary
 page of a bucket. It acquires a lock on both the old and new buckets
 for scans that happen concurrently with page splits. During a bucket
 split, a predicate lock is copied from the primary page of an old
 bucket to the primary page of a new bucket.
 
-    * The effects of page splits, overflows, consolidations, and
+* The effects of page splits, overflows, consolidations, and
 removals must be carefully reviewed to ensure that predicate locks
 aren't "lost" during those operations, or kept with pages which could
 get re-used for different parts of the index.
@@ -409,10 +409,10 @@ The PostgreSQL implementation of Serializable Snapshot Isolation
 differs from what is described in the cited papers for several
 reasons:
 
-   1. PostgreSQL didn't have any existing predicate locking. It had
+1. PostgreSQL didn't have any existing predicate locking. It had
 to be added from scratch.
 
-   2. The existing in-memory lock structures were not suitable for
+2. The existing in-memory lock structures were not suitable for
 tracking SIREAD locks.
           * In PostgreSQL, tuple level locks are not held in RAM for
 any length of time; lock information is written to the tuples
@@ -426,39 +426,39 @@ transactions executing while one long-running transaction stays open
 -- the in-RAM techniques discussed in the papers wouldn't support
 that.
 
-   3. Unlike the database products used for the prototypes described
+3. Unlike the database products used for the prototypes described
 in the papers, PostgreSQL didn't already have a true serializable
 isolation level distinct from snapshot isolation.
 
-   4. PostgreSQL supports subtransactions -- an issue not mentioned
+4. PostgreSQL supports subtransactions -- an issue not mentioned
 in the papers.
 
-   5. PostgreSQL doesn't assign a transaction number to a database
+5. PostgreSQL doesn't assign a transaction number to a database
 transaction until and unless necessary (normally, when the transaction
 attempts to modify data).
 
-   6. PostgreSQL has pluggable data types with user-definable
+6. PostgreSQL has pluggable data types with user-definable
 operators, as well as pluggable index types, not all of which are
 based around data types which support ordering.
 
-   7. Some possible optimizations became apparent during development
+7. Some possible optimizations became apparent during development
 and testing.
 
 Differences from the implementation described in the papers are
 listed below.
 
-    * New structures needed to be created in shared memory to track
+* New structures needed to be created in shared memory to track
 the proper information for serializable transactions and their SIREAD
 locks.
 
-    * Because PostgreSQL does not have the same concept of an "oldest
+* Because PostgreSQL does not have the same concept of an "oldest
 transaction ID" for all serializable transactions as assumed in the
 Cahill thesis, we track the oldest snapshot xmin among serializable
 transactions, and a count of how many active transactions use that
 xmin. When the count hits zero we find the new oldest xmin and run a
 clean-up based on that.
 
-    * Because reads in a subtransaction may cause that subtransaction
+* Because reads in a subtransaction may cause that subtransaction
 to roll back, thereby affecting what is written by the top level
 transaction, predicate locks must survive a subtransaction rollback.
 As a consequence, all xid usage in SSI, including predicate locking,
@@ -466,7 +466,7 @@ is based on the top level xid.  When looking at an xid that comes
 from a tuple's xmin or xmax, for example, we always call
 SubTransGetTopmostTransaction() before doing much else with it.
 
-    * PostgreSQL does not use "update in place" with a rollback log
+* PostgreSQL does not use "update in place" with a rollback log
 for its MVCC implementation.  Where possible it uses "HOT" updates on
 the same page (if there is room and no indexed value is changed).
 For non-HOT updates the old tuple is expired in place and a new tuple
@@ -477,21 +477,21 @@ versions of the row, based on the following proof that any additional
 serialization failures we would get from that would be false
 positives:
 
-          o If transaction T1 reads a row version (thus acquiring a
+- If transaction T1 reads a row version (thus acquiring a
 predicate lock on it) and a second transaction T2 updates that row
 version (thus creating a rw-conflict graph edge from T1 to T2), must a
 third transaction T3 which re-updates the new version of the row also
 have a rw-conflict in from T1 to prevent anomalies?  In other words,
 does it matter whether we recognize the edge T1 -> T3?
 
-          o If T1 has a conflict in, it certainly doesn't. Adding the
+- If T1 has a conflict in, it certainly doesn't. Adding the
 edge T1 -> T3 would create a dangerous structure, but we already had
 one from the edge T1 -> T2, so we would have aborted something anyway.
 (T2 has already committed, else T3 could not have updated its output;
 but we would have aborted either T1 or T1's predecessor(s).  Hence
 no cycle involving T1 and T3 can survive.)
 
-          o Now let's consider the case where T1 doesn't have a
+- Now let's consider the case where T1 doesn't have a
 rw-conflict in. If that's the case, for this edge T1 -> T3 to make a
 difference, T3 must have a rw-conflict out that induces a cycle in the
 dependency graph, i.e. a conflict out to some transaction preceding T1
@@ -499,7 +499,7 @@ in the graph. (A conflict out to T1 itself would be problematic too,
 but that would mean T1 has a conflict in, the case we already
 eliminated.)
 
-          o So now we're trying to figure out if there can be an
+- So now we're trying to figure out if there can be an
 rw-conflict edge T3 -> T0, where T0 is some transaction that precedes
 T1. For T0 to precede T1, there has to be some edge, or sequence of
 edges, from T0 to T1. At least the last edge has to be a wr-dependency
@@ -511,10 +511,10 @@ of transactions to see that T3 can't have a rw-conflict to T0:
  - T2 committed before T3 started (otherwise, T3 would get aborted
                                    because of an update conflict)
 
-          o That means T0 committed before T3 started, and therefore
+- That means T0 committed before T3 started, and therefore
 there can't be a rw-conflict from T3 to T0.
 
-          o So in all cases, we don't need the T1 -> T3 edge to
+- So in all cases, we don't need the T1 -> T3 edge to
 recognize cycles.  Therefore it's not necessary for T1's SIREAD lock
 on the original tuple version to cover later versions as well.
 

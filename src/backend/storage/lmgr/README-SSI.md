@@ -518,22 +518,22 @@ there can't be a rw-conflict from T3 to T0.
 recognize cycles.  Therefore it's not necessary for T1's SIREAD lock
 on the original tuple version to cover later versions as well.
 
-    * Predicate locking in PostgreSQL starts at the tuple level
+* Predicate locking in PostgreSQL starts at the tuple level
 when possible. Multiple fine-grained locks are promoted to a single
 coarser-granularity lock as needed to avoid resource exhaustion.  The
 amount of memory used for these structures is configurable, to balance
 RAM usage against SIREAD lock granularity.
 
-    * Each backend keeps a process-local table of the locks it holds.
+* Each backend keeps a process-local table of the locks it holds.
 To support granularity promotion decisions with low CPU and locking
 overhead, this table also includes the coarser covering locks and the
 number of finer-granularity locks they cover.
 
-    * Conflicts are identified by looking for predicate locks
+* Conflicts are identified by looking for predicate locks
 when tuples are written, and by looking at the MVCC information when
 tuples are read. There is no matching between two RAM-based locks.
 
-    * Because write locks are stored in the heap tuples rather than a
+* Because write locks are stored in the heap tuples rather than a
 RAM-based lock table, the optimization described in the Cahill thesis
 which eliminates an SIREAD lock where there is a write lock is
 implemented by the following:
@@ -543,18 +543,18 @@ predicate locks, a tuple lock on the tuple being written is removed.
 return quickly without doing anything if it is a tuple written by the
 reading transaction.
 
-    * Rather than using conflictIn and conflictOut pointers which use
+* Rather than using conflictIn and conflictOut pointers which use
 NULL to indicate no conflict and a self-reference to indicate
 multiple conflicts or conflicts with committed transactions, we use a
 list of rw-conflicts. With the more complete information, false
 positives are reduced and we have sufficient data for more aggressive
 clean-up and other optimizations:
 
-          o We can avoid ever rolling back a transaction until and
+  - We can avoid ever rolling back a transaction until and
 unless there is a pivot where a transaction on the conflict *out*
 side of the pivot committed before either of the other transactions.
 
-          o We can avoid ever rolling back a transaction when the
+  - We can avoid ever rolling back a transaction when the
 transaction on the conflict *in* side of the pivot is explicitly or
 implicitly READ ONLY unless the transaction on the conflict *out*
 side of the pivot committed before the READ ONLY transaction acquired
@@ -562,25 +562,25 @@ its snapshot. (An implicit READ ONLY transaction is one which
 committed without writing, even though it was not explicitly declared
 to be READ ONLY.)
 
-          o We can more aggressively clean up conflicts, predicate
+  - We can more aggressively clean up conflicts, predicate
 locks, and SSI transaction information.
 
-    * We allow a READ ONLY transaction to "opt out" of SSI if there are
+* We allow a READ ONLY transaction to "opt out" of SSI if there are
 no READ WRITE transactions which could cause the READ ONLY
 transaction to ever become part of a "dangerous structure" of
 overlapping transaction dependencies.
 
-    * We allow the user to request that a READ ONLY transaction wait
+* We allow the user to request that a READ ONLY transaction wait
 until the conditions are right for it to start in the "opt out" state
 described above. We add a DEFERRABLE state to transactions, which is
 specified and maintained in a way similar to READ ONLY. It is
 ignored for transactions that are not SERIALIZABLE and READ ONLY.
 
-    * When a transaction must be rolled back, we pick among the
+* When a transaction must be rolled back, we pick among the
 active transactions such that an immediate retry will not fail again
 on conflicts with the same transactions.
 
-    * We use the PostgreSQL SLRU system to hold summarized
+* We use the PostgreSQL SLRU system to hold summarized
 information about older committed transactions to put an upper bound
 on RAM used. Beyond that limit, information spills to disk.
 Performance can degrade in a pessimal situation, but it should be
@@ -594,7 +594,7 @@ R&D Issues
 This is intended to be the place to record specific issues which need
 more detailed review or analysis.
 
-    * WAL file replay. While serializable implementations using S2PL
+* WAL file replay. While serializable implementations using S2PL
 can guarantee that the write-ahead log contains commits in a sequence
 consistent with some serial execution of serializable transactions,
 SSI cannot make that guarantee. While the WAL replay is no less
@@ -606,18 +606,18 @@ essence, if we do nothing, WAL replay will be at snapshot isolation
 even for serializable transactions. Is this OK? If not, how do we
 address it?
 
-    * External replication. Look at how this impacts external
+* External replication. Look at how this impacts external
 replication solutions, like Postgres-R, Slony, pgpool, HS/SR, etc.
 This is related to the "WAL file replay" issue.
 
-    * UNIQUE btree search for equality on all columns. Since a search
+* UNIQUE btree search for equality on all columns. Since a search
 of a UNIQUE index using equality tests on all columns will lock the
 heap tuple if an entry is found, it appears that there is no need to
 get a predicate lock on the index in that case. A predicate lock is
 still needed for such a search if a matching index entry which points
 to a visible tuple is not found.
 
-    * Minimize touching of shared memory. Should lists in shared
+* Minimize touching of shared memory. Should lists in shared
 memory push entries which have just been returned to the front of the
 available list, so they will be popped back off soon and some memory
 might never be touched, or should we keep adding returned items to
@@ -638,9 +638,9 @@ http://dx.doi.org/10.1145/1071610.1071615
 Architecture of a Database System. Foundations and Trends(R) in
 Databases Vol. 1, No. 2 (2007) 141-259.
 http://db.cs.berkeley.edu/papers/fntdb07-architecture.pdf
-  Of particular interest:
-    * 6.1 A Note on ACID
-    * 6.2 A Brief Review of Serializability
-    * 6.3 Locking and Latching
-    * 6.3.1 Transaction Isolation Levels
-    * 6.5.3 Next-Key Locking: Physical Surrogates for Logical Properties
+Of particular interest:
+* 6.1 A Note on ACID
+* 6.2 A Brief Review of Serializability
+* 6.3 Locking and Latching
+* 6.3.1 Transaction Isolation Levels
+* 6.5.3 Next-Key Locking: Physical Surrogates for Logical Properties

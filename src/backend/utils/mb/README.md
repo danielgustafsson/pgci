@@ -16,7 +16,7 @@ See also in src/common/:
 
 	encnames.c:	public functions for encoding names
 	wchar.c:	mostly static functions and a public table for mb string and
-				multibyte conversion
+			multibyte conversion
 
 Introduction
 ------------

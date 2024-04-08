@@ -476,8 +476,7 @@ row.  We don't try to copy or expand a tuple lock to any other
 versions of the row, based on the following proof that any additional
 serialization failures we would get from that would be false
 positives:
-
- - If transaction T1 reads a row version (thus acquiring a
+- If transaction T1 reads a row version (thus acquiring a
 predicate lock on it) and a second transaction T2 updates that row
 version (thus creating a rw-conflict graph edge from T1 to T2), must a
 third transaction T3 which re-updates the new version of the row also

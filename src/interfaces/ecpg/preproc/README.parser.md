@@ -24,6 +24,7 @@ rules concatenated together. e.g. if gram.y has this:
 
 then "dumpedtokens" is "ruleAtokenAtokenBtokenC".
 "postfix" above can be:
+
 a) "block" - the automatic rule created by parse.pl is completely
     overridden, the code block has to be written completely as
     it were in a plain bison grammar

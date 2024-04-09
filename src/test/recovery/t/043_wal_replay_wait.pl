@@ -94,4 +94,5 @@ $node_standby->wait_for_log('recovery is not in progress', $log_offset);
 
 $node_standby->stop;
 $node_primary->stop;
+$psql_session->{run}->finish;
 done_testing();

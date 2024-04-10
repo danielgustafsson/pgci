@@ -109,11 +109,7 @@ $node->safe_psql('postgres',
 
 # We just initialize the GUC and wait. No transaction is required.
 $psql_session = $node->background_psql('postgres');
-$psql_session->query_until(
-	qr/starting_bg_psql/, q(
-   \echo starting_bg_psql
-   SET idle_session_timeout to '10ms';
-));
+$psql_session->query(q(SET idle_session_timeout to '10ms';));
 
 # Wait until the backend enters the timeout injection point.
 $node->wait_for_event('client backend', 'idle-session-timeout');

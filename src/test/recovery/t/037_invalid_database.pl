@@ -87,6 +87,7 @@ is($node->psql('postgres', 'DROP DATABASE regression_invalid'),
 # dropping the database, making it a suitable point to wait.
 my $bgpsql = $node->background_psql('postgres', on_error_stop => 0);
 my $pid = $bgpsql->query('SELECT pg_backend_pid()');
+isnt($pid, undef, 'Get backend PID');
 
 # create the database, prevent drop database via lock held by a 2PC transaction
 ok( $bgpsql->query_safe(

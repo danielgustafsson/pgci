@@ -96,7 +96,7 @@ sub new
 	  "Forbidden caller of constructor: package: $package, file: $file:$line"
 	  unless $package->isa('PostgreSQL::Test::Cluster');
 
-	$psql->{timeout} = IPC::Run::timeout(
+	$psql->{timeout} = IPC::Run::timer(
 		defined($timeout)
 		? $timeout
 		: $PostgreSQL::Test::Utils::timeout_default);
@@ -148,7 +148,8 @@ sub _wait_connect
 =item $session->quit
 
 Close the session and clean up resources. Each test run must be closed with
-C<quit>.
+C<quit>.  Returns TRUE when the session was cleanly terminated, otherwise
+FALSE.  A testfailure will be issued in case the session failed to finish.
 
 =cut
 
@@ -158,7 +159,9 @@ sub quit
 
 	$self->{stdin} .= "\\q\n";
 
-	return $self->{run}->finish;
+	my $ret = $self->{run}->finish;
+	ok($ret, 'Terminating interactive psql session');
+	return $ret;
 }
 
 =pod
@@ -219,7 +222,8 @@ sub query
 
 	pump_until($self->{run}, $self->{timeout}, \$self->{stdout}, qr/$banner/);
 
-	die "psql query timed out" if $self->{timeout}->is_expired;
+	isnt($self->{timeout}->is_expired, 'psql query timed out');
+	return undef if $self->{timeout}->is_expired;
 	$output = $self->{stdout};
 
 	# remove banner again, our caller doesn't care
@@ -278,7 +282,8 @@ sub query_until
 
 	pump_until($self->{run}, $self->{timeout}, \$self->{stdout}, $until);
 
-	die "psql query timed out" if $self->{timeout}->is_expired;
+	isnt($self->{timeout}->is_expired, 'psql query_until timed out');
+	return undef if $self->{timeout}->is_expired;
 
 	$ret = $self->{stdout};
 

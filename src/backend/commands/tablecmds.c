@@ -5687,7 +5687,7 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 			case AT_AddIndex:
 
 				/*
-				 * A primary key on a inheritance parent needs supporting NOT
+				 * A primary key on an inheritance parent needs supporting NOT
 				 * NULL constraint on its children; enqueue commands to create
 				 * those or mark them inherited if they already exist.
 				 */
@@ -20225,7 +20225,7 @@ ATExecDetachPartitionFinalize(Relation rel, RangeVar *name)
  * DetachAddConstraintIfNeeded
  *		Subroutine for ATExecDetachPartition.  Create a constraint that
  *		takes the place of the partition constraint, but avoid creating
- *		a dupe if an constraint already exists which implies the needed
+ *		a dupe if a constraint already exists which implies the needed
  *		constraint.
  */
 static void

@@ -580,11 +580,6 @@ struct pg_conn
 	void	   *engine;			/* dummy field to keep struct the same if
 								 * OpenSSL version changes */
 #endif
-	bool		crypto_loaded;	/* Track if libcrypto locking callbacks have
-								 * been done for this connection. This can be
-								 * removed once support for OpenSSL 1.0.2 is
-								 * removed as this locking is handled
-								 * internally in OpenSSL >= 1.1.0. */
 #endif							/* USE_OPENSSL */
 #endif							/* USE_SSL */
 

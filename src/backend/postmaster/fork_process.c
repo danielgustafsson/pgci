@@ -110,9 +110,6 @@ fork_process(void)
 				close(fd);
 			}
 		}
-
-		/* do post-fork initialization for random number generation */
-		pg_strong_random_init();
 	}
 	else
 	{

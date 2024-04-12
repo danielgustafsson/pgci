@@ -25,13 +25,10 @@
 #include <sys/time.h>
 
 /*
- * pg_strong_random & pg_strong_random_init
+ * pg_strong_random
  *
  * Generate requested number of random bytes. The returned bytes are
  * cryptographically secure, suitable for use e.g. in authentication.
- *
- * Before pg_strong_random is called in any process, the generator must first
- * be initialized by calling pg_strong_random_init().
  *
  * We rely on system facilities for actually generating the numbers.
  * We support a number of sources:
@@ -51,22 +48,21 @@
 #ifdef USE_OPENSSL
 
 #include <openssl/rand.h>
-
-void
-pg_strong_random_init(void)
-{
-	/*
-	 * Make sure processes do not share OpenSSL randomness state.  This is no
-	 * longer required in OpenSSL 1.1.1 and later versions, but until we drop
-	 * support for version < 1.1.1 we need to do this.
-	 */
-	RAND_poll();
-}
+#include <openssl/opensslv.h>
 
 bool
 pg_strong_random(void *buf, size_t len)
 {
 	int			i;
+
+#if (OPENSSL_VERSION_NUMBER <= 0x10100000L)
+	/*
+	 * Make sure processes do not share OpenSSL randomness state.  This is not
+	 * requred on LibreSSL and no longer required in OpenSSL 1.1.1 and later
+	 * versions.
+	 */
+	RAND_poll();
+#endif
 
 	/*
 	 * Check that OpenSSL's CSPRNG has been sufficiently seeded, and if not
@@ -104,12 +100,6 @@ pg_strong_random(void *buf, size_t len)
  */
 static HCRYPTPROV hProvider = 0;
 
-void
-pg_strong_random_init(void)
-{
-	/* No initialization needed on WIN32 */
-}
-
 bool
 pg_strong_random(void *buf, size_t len)
 {
@@ -142,12 +132,6 @@ pg_strong_random(void *buf, size_t len)
 /*
  * Without OpenSSL or Win32 support, just read /dev/urandom ourselves.
  */
-
-void
-pg_strong_random_init(void)
-{
-	/* No initialization needed */
-}
 
 bool
 pg_strong_random(void *buf, size_t len)

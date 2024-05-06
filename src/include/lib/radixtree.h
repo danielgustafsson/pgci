@@ -1869,7 +1869,7 @@ RT_CREATE(MemoryContext ctx)
 	 */
 	if (sizeof(RT_VALUE_TYPE) > sizeof(RT_PTR_ALLOC))
 		tree->leaf_context = SlabContextCreate(ctx,
-											   RT_STR(RT_PREFIX) "radix_tree leaf contex",
+											   RT_STR(RT_PREFIX) "radix_tree leaf context",
 											   RT_SLAB_BLOCK_SIZE(sizeof(RT_VALUE_TYPE)),
 											   sizeof(RT_VALUE_TYPE));
 #endif							/* !RT_VARLEN_VALUE_SIZE */

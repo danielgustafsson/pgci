@@ -1392,30 +1392,14 @@ static bool
 initialize_ecdh(SSL_CTX *context, bool isServerStart)
 {
 #ifndef OPENSSL_NO_ECDH
-	EC_KEY	   *ecdh;
-	int			nid;
-
-	nid = OBJ_sn2nid(SSLECDHCurve);
-	if (!nid)
+	if (SSL_CTX_set1_groups_list(context, SSLECDHCurve) != 1)
 	{
 		ereport(isServerStart ? FATAL : LOG,
 				(errcode(ERRCODE_CONFIG_FILE_ERROR),
-				 errmsg("ECDH: unrecognized curve name: %s", SSLECDHCurve)));
+				 errmsg("ECDH: failed to set curve names: %s",
+						SSLerrmessage(ERR_get_error()))));
 		return false;
 	}
-
-	ecdh = EC_KEY_new_by_curve_name(nid);
-	if (!ecdh)
-	{
-		ereport(isServerStart ? FATAL : LOG,
-				(errcode(ERRCODE_CONFIG_FILE_ERROR),
-				 errmsg("ECDH: could not create key")));
-		return false;
-	}
-
-	SSL_CTX_set_options(context, SSL_OP_SINGLE_ECDH_USE);
-	SSL_CTX_set_tmp_ecdh(context, ecdh);
-	EC_KEY_free(ecdh);
 #endif
 
 	return true;

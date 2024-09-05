@@ -207,6 +207,9 @@ log_statement=all
 EOF
 	);
 
+	# use lists of ECDH curves for syntax testing
+	$node->append_conf('ssl_ecdh_curve=prime256v1:secp521r1');
+
 	# enable SSL and set up server key
 	$node->append_conf('postgresql.conf', "include 'sslconfig.conf'");
 

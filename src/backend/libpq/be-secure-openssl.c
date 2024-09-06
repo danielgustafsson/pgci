@@ -100,6 +100,7 @@ be_tls_init(bool isServerStart)
 	SSL_CTX    *context;
 	int			ssl_ver_min = -1;
 	int			ssl_ver_max = -1;
+	int			status;
 
 	/*
 	 * Create a new SSL context into which we'll load all the configuration
@@ -287,12 +288,30 @@ be_tls_init(bool isServerStart)
 	if (!initialize_ecdh(context, isServerStart))
 		goto error;
 
-	/* set up the allowed cipher list */
-	if (SSL_CTX_set_cipher_list(context, SSLCipherSuites) != 1)
+	/* set up the allowed cipher list for TLSv1.2 and below */
+	if (SSL_CTX_set_cipher_list(context, SSLCipherLists) != 1)
 	{
 		ereport(isServerStart ? FATAL : LOG,
 				(errcode(ERRCODE_CONFIG_FILE_ERROR),
-				 errmsg("could not set the cipher list (no valid ciphers available)")));
+				 errmsg("could not set the TLSv1.2 cipher list (no valid ciphers available)")));
+		goto error;
+	}
+
+	/*
+	 * Set up the allowed cipher suites for TLSv1.3. If the GUC is an empty
+	 * string we set the allowed suites to the OpenSSL default value.
+	 */
+	if (SSLCipherSuites[0])
+		status = SSL_CTX_set_ciphersuites(context, SSLCipherSuites);
+	else
+		status = SSL_CTX_set_ciphersuites(context, TLS_DEFAULT_CIPHERSUITES);
+
+	/* set up the allowed cipher suites */
+	if (status != 1)
+	{
+		ereport(isServerStart ? FATAL : LOG,
+				(errcode(ERRCODE_CONFIG_FILE_ERROR),
+				 errmsg("could not set the TLSv1.3 cipher suites (no valid ciphers available)")));
 		goto error;
 	}
 

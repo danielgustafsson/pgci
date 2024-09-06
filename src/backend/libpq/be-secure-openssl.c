@@ -100,6 +100,7 @@ be_tls_init(bool isServerStart)
 	SSL_CTX    *context;
 	int			ssl_ver_min = -1;
 	int			ssl_ver_max = -1;
+	int			status;
 
 	/*
 	 * Create a new SSL context into which we'll load all the configuration
@@ -287,12 +288,30 @@ be_tls_init(bool isServerStart)
 	if (!initialize_ecdh(context, isServerStart))
 		goto error;
 
-	/* set up the allowed cipher list */
-	if (SSL_CTX_set_cipher_list(context, SSLCipherSuites) != 1)
+	/* set up the allowed cipher list for TLSv1.2 and below */
+	if (SSL_CTX_set_cipher_list(context, SSLCipherLists) != 1)
 	{
 		ereport(isServerStart ? FATAL : LOG,
 				(errcode(ERRCODE_CONFIG_FILE_ERROR),
-				 errmsg("could not set the cipher list (no valid ciphers available)")));
+				 errmsg("could not set the TLSv1.2 cipher list (no valid ciphers available)")));
+		goto error;
+	}
+
+	/*
+	 * Set up the allowed cipher suites for TLSv1.3. If the GUC is an empty
+	 * string we set the allowed suites to the OpenSSL default value.
+	 */
+	if (SSLCipherSuites[0])
+		status = SSL_CTX_set_ciphersuites(context, SSLCipherSuites);
+	else
+		status = SSL_CTX_set_ciphersuites(context, TLS_DEFAULT_CIPHERSUITES);
+
+	/* set up the allowed cipher suites */
+	if (status != 1)
+	{
+		ereport(isServerStart ? FATAL : LOG,
+				(errcode(ERRCODE_CONFIG_FILE_ERROR),
+				 errmsg("could not set the TLSv1.3 cipher suites (no valid ciphers available)")));
 		goto error;
 	}
 
@@ -1392,30 +1411,14 @@ static bool
 initialize_ecdh(SSL_CTX *context, bool isServerStart)
 {
 #ifndef OPENSSL_NO_ECDH
-	EC_KEY	   *ecdh;
-	int			nid;
-
-	nid = OBJ_sn2nid(SSLECDHCurve);
-	if (!nid)
+	if (SSL_CTX_set1_groups_list(context, SSLECDHCurve) != 1)
 	{
 		ereport(isServerStart ? FATAL : LOG,
 				(errcode(ERRCODE_CONFIG_FILE_ERROR),
-				 errmsg("ECDH: unrecognized curve name: %s", SSLECDHCurve)));
+				 errmsg("ECDH: failed to set curve names: %s",
+						SSLerrmessage(ERR_get_error()))));
 		return false;
 	}
-
-	ecdh = EC_KEY_new_by_curve_name(nid);
-	if (!ecdh)
-	{
-		ereport(isServerStart ? FATAL : LOG,
-				(errcode(ERRCODE_CONFIG_FILE_ERROR),
-				 errmsg("ECDH: could not create key")));
-		return false;
-	}
-
-	SSL_CTX_set_options(context, SSL_OP_SINGLE_ECDH_USE);
-	SSL_CTX_set_tmp_ecdh(context, ecdh);
-	EC_KEY_free(ecdh);
 #endif
 
 	return true;

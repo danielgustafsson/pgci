@@ -2356,7 +2356,7 @@ struct config_int ConfigureNamesInt[] =
 	{
 		{"commit_timestamp_buffers", PGC_POSTMASTER, RESOURCES_MEM,
 			gettext_noop("Sets the size of the dedicated buffer pool used for the commit timestamp cache."),
-			gettext_noop("Specify 0 to have this value determined as a fraction of shared_buffers."),
+			gettext_noop("Specify 0 to have this value determined as a fraction of \"shared_buffers\"."),
 			GUC_UNIT_BLOCKS
 		},
 		&commit_timestamp_buffers,
@@ -2411,7 +2411,7 @@ struct config_int ConfigureNamesInt[] =
 	{
 		{"subtransaction_buffers", PGC_POSTMASTER, RESOURCES_MEM,
 			gettext_noop("Sets the size of the dedicated buffer pool used for the subtransaction cache."),
-			gettext_noop("Specify 0 to have this value determined as a fraction of shared_buffers."),
+			gettext_noop("Specify 0 to have this value determined as a fraction of \"shared_buffers\"."),
 			GUC_UNIT_BLOCKS
 		},
 		&subtransaction_buffers,
@@ -2422,7 +2422,7 @@ struct config_int ConfigureNamesInt[] =
 	{
 		{"transaction_buffers", PGC_POSTMASTER, RESOURCES_MEM,
 			gettext_noop("Sets the size of the dedicated buffer pool used for the transaction status cache."),
-			gettext_noop("Specify 0 to have this value determined as a fraction of shared_buffers."),
+			gettext_noop("Specify 0 to have this value determined as a fraction of \"shared_buffers\"."),
 			GUC_UNIT_BLOCKS
 		},
 		&transaction_buffers,
@@ -2942,7 +2942,7 @@ struct config_int ConfigureNamesInt[] =
 	{
 		{"wal_buffers", PGC_POSTMASTER, WAL_SETTINGS,
 			gettext_noop("Sets the number of disk-page buffers in shared memory for WAL."),
-			gettext_noop("Specify -1 to have this value determined as a fraction of shared_buffers."),
+			gettext_noop("Specify -1 to have this value determined as a fraction of \"shared_buffers\"."),
 			GUC_UNIT_XBLOCKS
 		},
 		&XLOGbuffers,
@@ -3068,7 +3068,7 @@ struct config_int ConfigureNamesInt[] =
 		{"log_min_duration_sample", PGC_SUSET, LOGGING_WHEN,
 			gettext_noop("Sets the minimum execution time above which "
 						 "a sample of statements will be logged."
-						 " Sampling is determined by log_statement_sample_rate."),
+						 " Sampling is determined by \"log_statement_sample_rate\"."),
 			gettext_noop("Zero logs a sample of all queries. -1 turns this feature off."),
 			GUC_UNIT_MS
 		},
@@ -4641,12 +4641,23 @@ struct config_string ConfigureNamesString[] =
 	},
 
 	{
-		{"ssl_ciphers", PGC_SIGHUP, CONN_AUTH_SSL,
-			gettext_noop("Sets the list of allowed SSL ciphers."),
+		{"ssl_cipher_suites", PGC_SIGHUP, CONN_AUTH_SSL,
+			gettext_noop("Sets the list of allowed TLSv1.3 cipher suites (leave blank for default)."),
 			NULL,
 			GUC_SUPERUSER_ONLY
 		},
 		&SSLCipherSuites,
+		"",
+		NULL, NULL, NULL
+	},
+
+	{
+		{"ssl_ciphers", PGC_SIGHUP, CONN_AUTH_SSL,
+			gettext_noop("Sets the list of allowed TLSv1.2 (and lower) ciphers."),
+			NULL,
+			GUC_SUPERUSER_ONLY
+		},
+		&SSLCipherLists,
 #ifdef USE_OPENSSL
 		"HIGH:MEDIUM:+3DES:!aNULL",
 #else
@@ -4657,8 +4668,8 @@ struct config_string ConfigureNamesString[] =
 
 	{
 		{"ssl_ecdh_curve", PGC_SIGHUP, CONN_AUTH_SSL,
-			gettext_noop("Sets the curve to use for ECDH."),
-			NULL,
+			gettext_noop("Sets the curve(s) to use for ECDH."),
+			gettext_noop("Multiple curves can be specified using colon-separated list."),
 			GUC_SUPERUSER_ONLY
 		},
 		&SSLECDHCurve,

@@ -26,7 +26,7 @@ static char *ssl_passphrase = NULL;
 static int	rot13_passphrase(char *buf, int size, int rwflag, void *userdata);
 
 /* hook function to set the callback */
-static void set_rot13(SSL_CTX *context, bool isServerStart);
+static void set_rot13(SSL_CTX *context, bool isServerStart, HostsLine *host);
 
 /*
  * Module load callback
@@ -53,7 +53,7 @@ _PG_init(void)
 }
 
 static void
-set_rot13(SSL_CTX *context, bool isServerStart)
+set_rot13(SSL_CTX *context, bool isServerStart, HostsLine *host)
 {
 	/* warn if the user has set ssl_passphrase_command */
 	if (ssl_passphrase_command[0])

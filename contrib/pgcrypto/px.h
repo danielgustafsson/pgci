@@ -89,12 +89,20 @@
 #define PXE_PGP_UNSUPPORTED_PUBALGO -122
 #define PXE_PGP_MULTIPLE_SUBKEYS	-123
 
+typedef enum LegacyCryptoOptions
+{
+	LGC_ON,
+	LGC_OFF,
+	LGC_FIPS,
+} LegacyCryptoOptions;
 
 typedef struct px_digest PX_MD;
 typedef struct px_alias PX_Alias;
 typedef struct px_hmac PX_HMAC;
 typedef struct px_cipher PX_Cipher;
 typedef struct px_combo PX_Combo;
+
+extern int legacy_crypto_enabled;
 
 struct px_digest
 {
@@ -181,6 +189,8 @@ const char *px_resolve_alias(const PX_Alias *list, const char *name);
 void		px_set_debug_handler(void (*handler) (const char *));
 
 void		px_memset(void *ptr, int c, size_t len);
+
+void		CheckLegacyCryptoMode(void);
 
 #ifdef PX_DEBUG
 void		px_debug(const char *fmt,...) pg_attribute_printf(1, 2);

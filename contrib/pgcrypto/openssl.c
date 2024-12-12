@@ -794,3 +794,46 @@ ResOwnerReleaseOSSLCipher(Datum res)
 {
 	free_openssl_cipher((OSSLCipher *) DatumGetPointer(res));
 }
+
+/*
+ * CheckLegacyCryptoMode
+ *
+ * Function for erroring out in case built-in crypto is executed when the user
+ * has disabled it. If legacy_crypto_enabled is set to LGC_OFF or LGC_FIPS and
+ * OpenSSL is operating in FIPS mode the function will error out, else the
+ * query executing built-in crypto can proceed.
+ */
+void
+CheckLegacyCryptoMode(void)
+{
+	int fips_enabled;
+
+	if (legacy_crypto_enabled == LGC_ON)
+		return;
+
+	if (legacy_crypto_enabled == LGC_OFF)
+		ereport(ERROR,
+				errmsg("use of built-in crypto functions is disabled"));
+
+	Assert(legacy_crypto_enabled == LGC_FIPS);
+
+	/*
+	 * EVP_default_properties_is_fips_enabled was added in OpenSSL 3.0, before
+	 * that FIPS_mode() was used to test for FIPS being enabled.  The last
+	 * upstream OpenSSL version before 3.0 which supported FIPS was 1.0.2, but
+	 * there are forks of 1.1.1 which are FIPS certified so we still need to
+	 * test with FIPS_mode() even though we don't support 1.0.2.
+	 */
+	fips_enabled =
+#if defined(EVP_default_properties_is_fips_enabled)
+	EVP_default_properties_is_fips_enabled(NULL);
+#elif defined(FIPS_mode)
+	FIPS_mode();
+#else
+	0;
+#endif
+
+	if (fips_enabled)
+		ereport(ERROR,
+				errmsg("use of non-FIPS certified crypto not allowed when OpenSSL is in FIPS mode"));
+}

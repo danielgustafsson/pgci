@@ -57,6 +57,7 @@
  * include <wincrypt.h>, but some other Windows headers do.)
  */
 #include "common/openssl.h"
+#include <openssl/ssl.h>
 #include <openssl/conf.h>
 #ifdef USE_SSL_ENGINE
 #include <openssl/engine.h>
@@ -86,6 +87,7 @@ static pthread_mutex_t ssl_config_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static PQsslKeyPassHook_OpenSSL_type PQsslKeyPassHook = NULL;
 static int	ssl_protocol_version_to_openssl(const char *protocol);
+static void SSL_CTX_keylog_cb(const SSL *ssl, const char *line);
 
 /* ------------------------------------------------------------ */
 /*			 Procedures common to all secure sessions			*/
@@ -684,6 +686,34 @@ pgtls_verify_peer_name_matches_certificate_guts(PGconn *conn,
 /* See pqcomm.h comments on OpenSSL implementation of ALPN (RFC 7301) */
 static unsigned char alpn_protos[] = PG_ALPN_PROTOCOL_VECTOR;
 
+/* This is a callback that writes to a given ssl key log file */
+static void SSL_CTX_keylog_cb(const SSL *ssl, const char *line) {
+	int fd;
+	mode_t old_umask;
+	ssize_t bytes_written;
+	PGconn *conn = SSL_get_app_data(ssl);
+
+	if (conn == NULL)
+		return;
+
+	old_umask = umask(077);
+	fd = open(conn->sslkeylogfile, O_WRONLY | O_APPEND | O_CREAT, 0600);
+	umask(old_umask);
+
+	if (fd == -1) {
+		libpq_append_conn_error(conn, "could not open ssl key log file %s: %s", conn->sslkeylogfile, pg_strerror(errno));
+		return;
+	}
+
+	bytes_written = dprintf(fd, "%s\n", line);
+	if (bytes_written < 0) {
+		libpq_append_conn_error(conn, "could not write to ssl key log file %s: %s", conn->sslkeylogfile, pg_strerror(errno));
+		close(fd);
+		return;
+	}
+	close(fd);
+}
+
 /*
  *	Create per-connection SSL object, and load the client certificate,
  *	private key, and trusted CA certs.
@@ -999,6 +1029,9 @@ initialize_SSL(PGconn *conn)
 		return -1;
 	}
 	conn->ssl_in_use = true;
+
+	if (conn->sslkeylogfile && strlen(conn->sslkeylogfile) > 0)
+		SSL_CTX_set_keylog_callback(SSL_context, SSL_CTX_keylog_cb);
 
 	/*
 	 * SSL contexts are reference counted by OpenSSL. We can free it as soon

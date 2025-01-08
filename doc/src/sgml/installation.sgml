@@ -301,7 +301,7 @@
       Additionally, <productname>LibreSSL</productname> is supported using the
       <productname>OpenSSL</productname> compatibility layer.  The minimum
       required version is 3.4 (from <systemitem class="osname">OpenBSD</systemitem>
-      version 7.0).
+      version 7.5).
      </para>
     </listitem>
 

@@ -115,16 +115,10 @@ be_tls_init(bool isServerStart)
 	List	   *sni_hosts = NIL;
 
 	/*
-	 * If there are contexts loaded when we init they should be released. This
-	 * should only be possible when reloading, but to keep any subtle bugs at
-	 * arms length we check unconditionally, with an assert added for extra
-	 * debugging in non-production builds.
+	 * If there are contexts loaded when we init they should be released.
 	 */
 	if (contexts != NIL)
-	{
-		Assert(isServerStart == false);
 		free_contexts();
-	}
 
 	/*
 	 * When ssl_snimode is off or default we load the SSL configuration

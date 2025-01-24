@@ -117,8 +117,6 @@ be_tls_init(bool isServerStart)
 	/*
 	 * If there are contexts loaded when we init they should be released.
 	 */
-	if (contexts != NIL)
-		free_contexts();
 
 	/*
 	 * When ssl_snimode is off or default we load the SSL configuration

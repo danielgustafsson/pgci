@@ -396,6 +396,25 @@ static const PQEnvironmentOption EnvironmentOptions[] =
 	}
 };
 
+typedef struct SupportedSASLMech
+{
+	const char *name;
+	const pg_fe_sasl_mech *mech;
+} SupportedSASLMech;
+
+#define SASL_MECHANISM_COUNT 1
+
+static SupportedSASLMech supported_sasl_mech[] =
+{
+	{
+		"SCRAM", &pg_scram_mech
+	},
+	{
+		NULL, NULL
+	}
+};
+
+
 /* The connection URI must start with either of the following designators: */
 static const char uri_designator[] = "postgresql://";
 static const char short_uri_designator[] = "postgres://";
@@ -512,8 +531,8 @@ pqDropConnection(PGconn *conn, bool flushInput)
 		conn->cleanup_async_auth = NULL;
 	}
 	conn->async_auth = NULL;
-	conn->altsock = PGINVALID_SOCKET;	/* cleanup_async_auth() should have
-										 * done this, but make sure. */
+	/* cleanup_async_auth() should have done this, but make sure */
+	conn->altsock = PGINVALID_SOCKET;
 #ifdef ENABLE_GSS
 	{
 		OM_uint32	min_s;
@@ -1144,14 +1163,14 @@ fill_allowed_sasl_mechs(PGconn *conn)
 	 *
 	 * To add a new mechanism to require_auth,
 	 * - update the length of conn->allowed_sasl_mechs,
-	 * - add the new pg_fe_sasl_mech pointer to this function, and
 	 * - handle the new mechanism name in the require_auth portion of
 	 *   pqConnectOptions2(), below.
 	 */
-	StaticAssertDecl(lengthof(conn->allowed_sasl_mechs) == 1,
-					 "fill_allowed_sasl_mechs() must be updated when resizing conn->allowed_sasl_mechs[]");
+	StaticAssertDecl(lengthof(conn->allowed_sasl_mechs) == SASL_MECHANISM_COUNT,
+					 "conn->allowed_sasl_mechs[] is not sufficiently large for holding all supported SASL mechanisms");
 
-	conn->allowed_sasl_mechs[0] = &pg_scram_mech;
+	for (int i = 0; i < SASL_MECHANISM_COUNT; i++)
+		conn->allowed_sasl_mechs[i] = supported_sasl_mech[i].mech;
 }
 
 /*
@@ -1506,8 +1525,7 @@ pqConnectOptions2(PGconn *conn)
 			 * Next group: SASL mechanisms. All of these use the same request
 			 * codes, so the list of allowed mechanisms is tracked separately.
 			 *
-			 * fill_allowed_sasl_mechs() must be updated when adding a new
-			 * mechanism here!
+			 * supported_sasl_mech must contain all mechanism handled here.
 			 */
 			else if (strcmp(method, "scram-sha-256") == 0)
 			{

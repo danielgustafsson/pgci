@@ -2801,6 +2801,7 @@ Subscription
 SubscriptionInfo
 SubscriptionRelState
 SummarizerReadLocalXLogPrivate
+SupportedSASLMech
 SupportRequestCost
 SupportRequestIndexCondition
 SupportRequestOptimizeWindowClause

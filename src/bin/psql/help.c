@@ -452,6 +452,8 @@ helpVariables(unsigned short int pager)
 		  "  VERSION_NAME\n"
 		  "  VERSION_NUM\n"
 		  "    psql's version (in verbose string, short string, or numeric format)\n");
+	HELP0("  WATCH_INTERVAL\n"
+		  "    number of seconds \\watch waits between executing the query buffer\n");
 
 	HELP0("\nDisplay settings:\n");
 	HELP0("Usage:\n");

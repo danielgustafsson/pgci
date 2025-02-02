@@ -2940,7 +2940,7 @@ exec_command_watch(PsqlScanState scan_state, bool active_branch,
 		bool		have_sleep = false;
 		bool		have_iter = false;
 		bool		have_min_rows = false;
-		double		sleep = 2;
+		double		sleep = pset.watch_interval;
 		int			iter = 0;
 		int			min_rows = 0;
 

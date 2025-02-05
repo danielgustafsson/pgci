@@ -33,11 +33,11 @@ _crypt_to64(char *s, unsigned long v, int n)
 char *
 px_crypt_md5(const char *pw, const char *salt, char *passwd, unsigned dstlen)
 {
-	static char *magic = "$1$"; /* This string is magic for this algorithm.
-								 * Having it this way, we can get better later
-								 * on */
-	static char *p;
-	static const char *sp,
+	static const char *magic = "$1$";	/* This string is magic for this
+										 * algorithm. Having it this way, we
+										 * can get better later on */
+	char	   *p;
+	const char *sp,
 			   *ep;
 	unsigned char final[MD5_SIZE];
 	int			sl,

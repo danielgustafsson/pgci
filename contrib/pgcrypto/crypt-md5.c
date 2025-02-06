@@ -81,7 +81,7 @@ px_crypt_md5(const char *pw, const char *salt, char *passwd, unsigned dstlen)
 	px_md_update(ctx, (const uint8 *) pw, strlen(pw));
 
 	/* Then our magic string */
-	px_md_update(ctx, (uint8 *) magic, strlen(magic));
+	px_md_update(ctx, (const uint8 *) magic, strlen(magic));
 
 	/* Then the raw salt */
 	px_md_update(ctx, (const uint8 *) sp, sl);

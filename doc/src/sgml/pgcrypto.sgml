@@ -1084,6 +1084,11 @@ decrypt_iv(data bytea, key bytea, iv bytea, type text) returns bytea
    </listitem>
    <listitem>
     <para>
+    <literal>cfb</literal> &mdash; next block depends on previous encrypted block
+    </para>
+   </listitem>
+   <listitem>
+    <para>
     <literal>ecb</literal> &mdash; each block is encrypted separately (for
     testing only)
     </para>

@@ -211,7 +211,7 @@ struct async_ctx
 	 * something like the following, with errctx and/or curl_err omitted when
 	 * absent:
 	 *
-	 *     connection to server ... failed: errctx: errbuf (curl_err)
+	 *     connection to server ... failed: errctx: errbuf (libcurl: curl_err)
 	 */
 	const char *errctx;			/* not freed; must point to static allocation */
 	PQExpBufferData errbuf;
@@ -930,7 +930,7 @@ parse_interval(struct async_ctx *actx, const char *interval_str)
  * Similar to parse_interval, but we have even fewer requirements for reasonable
  * values since we don't use the expiration time directly (it's passed to the
  * PQAUTHDATA_PROMPT_OAUTH_DEVICE hook, in case the application wants to do
- * something with it). We simply round and clamp to int range.
+ * something with it). We simply round down and clamp to int range.
  */
 static int
 parse_expires_in(struct async_ctx *actx, const char *expires_in_str)
@@ -938,7 +938,7 @@ parse_expires_in(struct async_ctx *actx, const char *expires_in_str)
 	double		parsed;
 
 	parsed = parse_json_number(expires_in_str);
-	parsed = round(parsed);
+	parsed = floor(parsed);
 
 	if (parsed >= INT_MAX)
 		return INT_MAX;
@@ -968,7 +968,8 @@ parse_device_authz(struct async_ctx *actx, struct device_authz *authz)
 
 		/*
 		 * There is no evidence of verification_uri_complete being spelled
-		 * with "url" instead with any service provider, so only support "uri".
+		 * with "url" instead with any service provider, so only support
+		 * "uri".
 		 */
 		{"verification_uri_complete", JSON_TOKEN_STRING, {&authz->verification_uri_complete}, OPTIONAL},
 		{"interval", JSON_TOKEN_NUMBER, {&authz->interval_str}, OPTIONAL},
@@ -1226,6 +1227,8 @@ register_socket(CURL *curl, curl_socket_t socket, int what, void *ctx,
 
 		return -1;
 	}
+
+	return 0;
 #endif
 #ifdef HAVE_SYS_EVENT_H
 	struct async_ctx *actx = ctx;
@@ -1307,9 +1310,12 @@ register_socket(CURL *curl, curl_socket_t socket, int what, void *ctx,
 			return -1;
 		}
 	}
-#endif
 
 	return 0;
+#endif
+
+	actx_error(actx, "libpq does not support multiplexer sockets on this platform");
+	return -1;
 }
 
 /*
@@ -2808,7 +2814,8 @@ error_return:
 	{
 		size_t		len;
 
-		appendPQExpBuffer(&conn->errorMessage, " (%s)", actx->curl_err);
+		appendPQExpBuffer(&conn->errorMessage,
+						  " (libcurl: %s)", actx->curl_err);
 
 		/* Sometimes libcurl adds a newline to the error buffer. :( */
 		len = conn->errorMessage.len;

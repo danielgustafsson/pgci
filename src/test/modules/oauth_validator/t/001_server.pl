@@ -570,7 +570,7 @@ $node->connect_fails(
 	expected_stderr => qr/FATAL:\s+fail_validator: sentinel error/);
 
 #
-# Test ABI compatability magic marker
+# Test ABI compatibility magic marker
 #
 $node->append_conf('postgresql.conf',
 	"oauth_validator_libraries = 'magic_validator'\n");
@@ -586,7 +586,9 @@ $log_start = $node->wait_for_log(qr/ready to accept connections/, $log_start);
 $node->connect_fails(
 	"user=test dbname=postgres oauth_issuer=$issuer/.well-known/oauth-authorization-server/alternate oauth_client_id=f02c6361-0636",
 	"magic_validator is used for $user",
-	expected_stderr => qr/FATAL:\s+OAuth validator module "magic_validator": magic number mismatch/);
+	expected_stderr =>
+	  qr/FATAL:\s+OAuth validator module "magic_validator": magic number mismatch/
+);
 $node->stop;
 
 done_testing();

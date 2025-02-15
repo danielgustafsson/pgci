@@ -10527,7 +10527,7 @@ int PQisthreadsafe();
   </para>
 
   <para>
-   Similarly, if you are using <productname></productname>Curl</productname> inside your application,
+   Similarly, if you are using <productname>Curl</productname> inside your application,
    <emphasis>and</emphasis> you do not already
    <ulink url="https://curl.se/libcurl/c/curl_global_init.html">initialize
    libcurl globally</ulink> before starting new threads, you will need to

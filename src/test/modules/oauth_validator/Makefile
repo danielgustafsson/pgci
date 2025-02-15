@@ -9,7 +9,7 @@
 #
 #-------------------------------------------------------------------------
 
-MODULES = validator fail_validator
+MODULES = validator fail_validator magic_validator
 PGFILEDESC = "validator - test OAuth validator module"
 
 PROGRAM = oauth_hook_client

@@ -741,9 +741,9 @@ load_validator_library(const char *libname)
 	MemoryContextCallback *mcb;
 
 	/*
-	 * Thre presence, and validity, of libname has already been established by
-	 * check_oauth_validator so we don't need to perform more than Assert level
-	 * checking here.
+	 * The presence, and validity, of libname has already been established by
+	 * check_oauth_validator so we don't need to perform more than Assert
+	 * level checking here.
 	 */
 	Assert(libname && *libname);
 
@@ -781,7 +781,7 @@ load_validator_library(const char *libname)
 	 */
 	if (ValidatorCallbacks->validate_cb == NULL)
 		ereport(ERROR,
-				errmsg("%s module \"%s\" must define the symbol %s",
+				errmsg("%s module \"%s\" must provide a %s callback",
 					   "OAuth validator", libname, "validate_cb"));
 
 	/* Allocate memory for validator library private state data */

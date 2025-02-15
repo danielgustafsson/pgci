@@ -21,7 +21,7 @@
  <warning>
   <para>
    Since a misbehaving validator might let unauthorized users into the database,
-   validating the correctness of the implementation is critical. See
+   correct implementation is crucial for server safety. See
    <xref linkend="oauth-validator-design"/> for design considerations.
   </para>
  </warning>
@@ -357,7 +357,7 @@ typedef bool (*ValidatorValidateCB) (const ValidatorModuleState *state,
 </programlisting>
 
     <replaceable>token</replaceable> will contain the bearer token to validate.
-    <application>libpq</application> has ensured that the token is well-formed syntactically, but no
+    <application>PostgreSQL</application> has ensured that the token is well-formed syntactically, but no
     other validation has been performed.  <replaceable>role</replaceable> will
     contain the role the user has requested to log in as.  The callback must
     set output parameters in the <literal>result</literal> struct, which is

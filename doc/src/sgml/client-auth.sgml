@@ -2409,7 +2409,7 @@ host ... radius radiusservers="server1,server2" radiussecrets="""secret one"",""
       <listitem>
        <para>
         The organization, product vendor, or other entity which develops and/or
-        administers the OAuth resource servers and clients for a given application.
+        administers the OAuth authorization servers and clients for a given application.
         Different providers typically choose different implementation details
         for their OAuth systems; a client of one provider is not generally
         guaranteed to have access to the servers of another.

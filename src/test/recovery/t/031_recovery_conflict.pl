@@ -253,9 +253,7 @@ $res = $psql_standby->query_until(
     -- wait for lock held by prepared transaction
 	SELECT * FROM $table2;
     ]);
-ok(1,
-	"$sect: cursor holding conflicting pin, also waiting for lock, established"
-);
+isnt($res, undef, "$sect: cursor holding conflicting pin, also waiting for lock, established");
 
 # just to make sure we're waiting for lock already
 ok( $node_standby->poll_query_until(

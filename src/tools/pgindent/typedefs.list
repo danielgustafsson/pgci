@@ -1633,8 +1633,10 @@ MemoryContextCallback
 MemoryContextCallbackFunction
 MemoryContextCounters
 MemoryContextData
+MemoryContextEntry
 MemoryContextMethodID
 MemoryContextMethods
+MemoryContextState
 MemoryStatsPrintFunc
 MergeAction
 MergeActionState

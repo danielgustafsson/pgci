@@ -147,30 +147,27 @@ my $default_ssl_connstr =
 $common_connstr =
   "$default_ssl_connstr user=ssltestuser dbname=trustdb hostaddr=$SERVERHOSTADDR host=common-name.pg-ssltest.test";
 
-my $tempdir = PostgreSQL::Test::Utils::tempdir;
-
-# Connect should work with a given sslkeylogfile
-$node->connect_ok(
-        "$common_connstr sslrootcert=ssl/root+server_ca.crt sslkeylogfile=$tempdir/key.txt sslmode=require",
-        "connect with server root cert and sslkeylogfile=$tempdir/key.txt");
-
-# Verify the key file exists
-ok(-f "$tempdir/key.txt", "key log file exists");
-
-# Skip permission checks on Windows/Cygwin
 SKIP:
 {
-        skip "Permissions check not enforced on Windows", 1
-        if ($windows_os || $Config::Config{osname} eq 'cygwin');
+	skip "Keylogging is not supported with LibreSSL", 5 if $libressl;
 
-        my $mode = (stat("$tempdir/key.txt"))[2];
-        my $permissions_ok = 1;
+	my $tempdir = PostgreSQL::Test::Utils::tempdir;
+	my @status;
 
-        if ($mode & 0006) {
-            $permissions_ok = 0;
-        }
+	# Connect should work with a given sslkeylogfile
+	$node->connect_ok(
+		"$common_connstr sslrootcert=ssl/root+server_ca.crt sslkeylogfile=$tempdir/key.txt sslmode=require",
+		"connect with server root cert and sslkeylogfile=$tempdir/key.txt");
 
-        ok($permissions_ok, "key log file is not world readble");
+	# Verify the key file exists
+	ok(-f "$tempdir/key.txt", "key log file exists");
+
+	# Skip permission checks on Windows/Cygwin
+	skip "Permissions check not enforced on Windows", 2
+	  if ($windows_os || $Config::Config{osname} eq 'cygwin');
+
+	ok((@status = stat("$tempdir/key.txt")), "keylog file exists and returned status");
+	ok(@status && !($status[2] & 0006), "key log file is not world readable");
 }
 
 # The server should not accept non-SSL connections.

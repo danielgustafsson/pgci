@@ -87,7 +87,6 @@ static pthread_mutex_t ssl_config_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static PQsslKeyPassHook_OpenSSL_type PQsslKeyPassHook = NULL;
 static int	ssl_protocol_version_to_openssl(const char *protocol);
-static void SSL_CTX_keylog_cb(const SSL *ssl, const char *line);
 
 /* ------------------------------------------------------------ */
 /*			 Procedures common to all secure sessions			*/
@@ -686,12 +685,22 @@ pgtls_verify_peer_name_matches_certificate_guts(PGconn *conn,
 /* See pqcomm.h comments on OpenSSL implementation of ALPN (RFC 7301) */
 static unsigned char alpn_protos[] = PG_ALPN_PROTOCOL_VECTOR;
 
-/* This is a callback that writes to a given ssl key log file */
-static void SSL_CTX_keylog_cb(const SSL *ssl, const char *line) {
-	int fd;
-	mode_t old_umask;
-	ssize_t bytes_written;
-	PGconn *conn = SSL_get_app_data(ssl);
+#ifdef HAVE_SSL_CTX_SET_KEYLOG_CALLBACK
+/*
+ * SSL Key Logging callback
+ *
+ * This callback lets the user store all key material to a file for debugging
+ * purposes.  The file will be written using the NSS keylog format.  LibreSSL
+ * 3.5 introduce stub function to set the callback for OpenSSL compatibility,
+ * but the callback is never invoked.
+ */
+static void
+SSL_CTX_keylog_cb(const SSL *ssl, const char *line)
+{
+	int			fd;
+	mode_t		old_umask;
+	ssize_t		rc;
+	PGconn	   *conn = SSL_get_app_data(ssl);
 
 	if (conn == NULL)
 		return;
@@ -700,19 +709,24 @@ static void SSL_CTX_keylog_cb(const SSL *ssl, const char *line) {
 	fd = open(conn->sslkeylogfile, O_WRONLY | O_APPEND | O_CREAT, 0600);
 	umask(old_umask);
 
-	if (fd == -1) {
-		libpq_append_conn_error(conn, "could not open ssl key log file %s: %s", conn->sslkeylogfile, pg_strerror(errno));
+	if (fd == -1)
+	{
+		libpq_append_conn_error(conn, "could not open ssl key log file %s: %s",
+								conn->sslkeylogfile, pg_strerror(errno));
 		return;
 	}
 
-	bytes_written = dprintf(fd, "%s\n", line);
-	if (bytes_written < 0) {
-		libpq_append_conn_error(conn, "could not write to ssl key log file %s: %s", conn->sslkeylogfile, pg_strerror(errno));
-		close(fd);
-		return;
-	}
+	/* line is guaranteed by OpenSSL to be NUL terminated */
+	rc = write(fd, line, strlen(line));
+	if (rc < 0)
+		libpq_append_conn_error(conn, "could not write to ssl key log file %s: %s",
+								conn->sslkeylogfile, pg_strerror(errno));
+	else
+		rc = write(fd, "\n", 1);
+	(void) rc;					/* silence compiler warnings */
 	close(fd);
 }
+#endif
 
 /*
  *	Create per-connection SSL object, and load the client certificate,
@@ -1030,8 +1044,10 @@ initialize_SSL(PGconn *conn)
 	}
 	conn->ssl_in_use = true;
 
+#ifdef HAVE_SSL_CTX_SET_KEYLOG_CALLBACK
 	if (conn->sslkeylogfile && strlen(conn->sslkeylogfile) > 0)
 		SSL_CTX_set_keylog_callback(SSL_context, SSL_CTX_keylog_cb);
+#endif
 
 	/*
 	 * SSL contexts are reference counted by OpenSSL. We can free it as soon

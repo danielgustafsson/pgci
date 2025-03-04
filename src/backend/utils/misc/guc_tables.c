@@ -4755,7 +4755,7 @@ struct config_string ConfigureNamesString[] =
 		},
 		&SSLECDHCurve,
 #ifdef USE_SSL
-		"prime256v1",
+		"x25519:prime256v1",
 #else
 		"none",
 #endif

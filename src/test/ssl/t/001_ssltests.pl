@@ -160,7 +160,7 @@ SKIP:
 		"connect with server root cert and sslkeylogfile=$tempdir/key.txt");
 
 	# Verify the key file exists
-	ok(-f "$tempdir/key.txt", "keylog file exists");
+	ok(-f "$tempdir/key.txt", "keylog file exists at: $tempdir/key.txt");
 
 	# Skip permission checks on Windows/Cygwin
 	skip "Permissions check not enforced on Windows", 2

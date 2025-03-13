@@ -160,14 +160,14 @@ SKIP:
 		"connect with server root cert and sslkeylogfile=$tempdir/key.txt");
 
 	# Verify the key file exists
-	ok(-f "$tempdir/key.txt", "key log file exists");
+	ok(-f "$tempdir/key.txt", "keylog file exists");
 
 	# Skip permission checks on Windows/Cygwin
 	skip "Permissions check not enforced on Windows", 2
 	  if ($windows_os || $Config::Config{osname} eq 'cygwin');
 
 	ok((@status = stat("$tempdir/key.txt")), "keylog file exists and returned status");
-	ok(@status && !($status[2] & 0006), "key log file is not world readable");
+	ok(@status && !($status[2] & 0006), "keylog file is not world readable");
 }
 
 # The server should not accept non-SSL connections.

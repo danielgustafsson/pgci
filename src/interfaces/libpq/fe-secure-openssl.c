@@ -705,15 +705,12 @@ SSL_CTX_keylog_cb(const SSL *ssl, const char *line)
 	if (conn == NULL)
 		return;
 
-	fprintf(stderr, "XXX: yolo, writing to %s", conn->sslkeylogfile);
-
 	old_umask = umask(077);
 	fd = open(conn->sslkeylogfile, O_WRONLY | O_APPEND | O_CREAT, 0600);
 	umask(old_umask);
 
 	if (fd == -1)
 	{
-		fprintf(stderr, "XXX: could not open %s", conn->sslkeylogfile);
 		libpq_append_conn_error(conn, "could not open ssl keylog file %s: %s",
 								conn->sslkeylogfile, pg_strerror(errno));
 		return;

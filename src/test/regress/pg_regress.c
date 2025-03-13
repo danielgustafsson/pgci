@@ -834,6 +834,7 @@ initialize_environment(void)
 		unsetenv("PGSSLCRL");
 		unsetenv("PGSSLCRLDIR");
 		unsetenv("PGSSLKEY");
+		unsetenv("PGSSLKEYLOGFILE");
 		unsetenv("PGSSLMAXPROTOCOLVERSION");
 		unsetenv("PGSSLMINPROTOCOLVERSION");
 		unsetenv("PGSSLMODE");

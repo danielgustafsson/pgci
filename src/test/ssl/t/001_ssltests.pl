@@ -154,6 +154,8 @@ SKIP:
 	my $tempdir = PostgreSQL::Test::Utils::tempdir;
 	my @status;
 
+	$tempdir =~ s/\\/\\\\/g;
+
 	# Connect should work with a given sslkeylogfile
 	$node->connect_ok(
 		"$common_connstr sslrootcert=ssl/root+server_ca.crt sslkeylogfile=$tempdir/key.txt sslmode=require",

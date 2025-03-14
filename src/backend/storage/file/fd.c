@@ -4040,7 +4040,13 @@ check_debug_io_direct(char **newval, void **extra, GucSource source)
 		return result;
 
 	/* Save the flags in *extra, for use by assign_debug_io_direct */
-	*extra = guc_malloc(ERROR, sizeof(int));
+	*extra = guc_malloc(LOG, sizeof(int));
+	if (!*extra)
+	{
+		pfree(rawstring);
+		list_free(elemlist);
+		return false;
+	}
 	*((int *) *extra) = flags;
 
 	return result;

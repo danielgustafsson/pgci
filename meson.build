@@ -1333,14 +1333,41 @@ if sslopt in ['auto', 'openssl']
 
   # via library + headers
   if not ssl.found()
+    is_windows = host_system == 'windows'
+
+    ssl_lib_common_params = {
+      'dirs': test_lib_d,
+      'header_include_directories': postgres_inc,
+      'has_headers': ['openssl/ssl.h', 'openssl/err.h'],
+    }
     ssl_lib = cc.find_library('ssl',
-      dirs: test_lib_d,
-      header_include_directories: postgres_inc,
-      has_headers: ['openssl/ssl.h', 'openssl/err.h'],
-      required: openssl_required)
+      kwargs: ssl_lib_common_params,
+      required: openssl_required and not is_windows
+    )
+    # OpenSSL changed the library names on Windows in 1.1.0 to match other
+    # platforms, in OpenSSL 1.0.2 the old ssleay32 named still remained so we
+    # need to check for both.
+    # https://github.com/openssl/openssl/issues/10332#issuecomment-549027653
+    if not ssl_lib.found() and is_windows
+      ssl_lib = cc.find_library('ssleay32',
+        kwargs: ssl_lib_common_params,
+        required: openssl_required
+      )
+    endif
+
     crypto_lib = cc.find_library('crypto',
       dirs: test_lib_d,
-      required: openssl_required)
+      required: openssl_required and not is_windows)
+    # OpenSSL changed the library names on Windows in 1.1.0 to match other
+    # platforms, in OpenSSL 1.0.2 the old eay32 named still remained so we
+    # need to check for both.
+    # https://github.com/openssl/openssl/issues/10332#issuecomment-549027653
+    if not crypto_lib.found() and is_windows
+      crypto_lib = cc.find_library('libeay32',
+        dirs: test_lib_d,
+        required: openssl_required)
+    endif
+
     if ssl_lib.found() and crypto_lib.found()
       ssl_int = [ssl_lib, crypto_lib]
       ssl = declare_dependency(dependencies: ssl_int, include_directories: postgres_inc)

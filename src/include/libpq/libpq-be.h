@@ -28,11 +28,7 @@
 #include <netinet/tcp.h>
 
 #ifdef ENABLE_GSS
-#if defined(HAVE_GSSAPI_H)
-#include <gssapi.h>
-#else
-#include <gssapi/gssapi.h>
-#endif							/* HAVE_GSSAPI_H */
+#include "libpq/pg-gssapi.h"
 #endif							/* ENABLE_GSS */
 
 #ifdef ENABLE_SSPI

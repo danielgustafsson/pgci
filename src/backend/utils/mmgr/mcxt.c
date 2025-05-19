@@ -21,6 +21,7 @@
 
 #include "postgres.h"
 
+#include "access/xact.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "nodes/pg_list.h"
@@ -1451,6 +1452,16 @@ ProcessGetMemoryContextInterrupt(void)
 	PublishMemoryContextPending = false;
 
 	/*
+	 * Avoid performing any shared memory operations in aborted transaction,
+	 * the caller will get the fallback behaviour of the past known stats.
+	 */
+	if (IsAbortedTransactionBlockState())
+	{
+		ConditionVariableBroadcast(&memCxtState[idx].memcxt_cv);
+		return;
+	}
+
+	/*
 	 * The hash table is used for constructing "path" column of the view,
 	 * similar to its local backend counterpart.
 	 */
@@ -1569,7 +1580,7 @@ ProcessGetMemoryContextInterrupt(void)
 
 	if (summary)
 	{
-		int			cxt_id = 0;
+		int			cxt_id = 1;
 		List	   *path = NIL;
 
 		/* Copy TopMemoryContext statistics to DSA */
@@ -1577,9 +1588,8 @@ ProcessGetMemoryContextInterrupt(void)
 		(*TopMemoryContext->methods->stats) (TopMemoryContext, NULL, NULL,
 											 &stat, true);
 		path = lcons_int(1, path);
-		PublishMemoryContext(meminfo, cxt_id, TopMemoryContext, path, stat,
+		PublishMemoryContext(meminfo, 0, TopMemoryContext, path, stat,
 							 1, MemoryStatsDsaArea, 100);
-		cxt_id = cxt_id + 1;
 
 		/*
 		 * Copy statistics for each of TopMemoryContexts children.  This
@@ -1609,7 +1619,6 @@ ProcessGetMemoryContextInterrupt(void)
 			PublishMemoryContext(meminfo, cxt_id, c, path,
 								 grand_totals, num_contexts, MemoryStatsDsaArea, 100);
 		}
-		memCxtState[idx].total_stats = cxt_id;
 
 		/* Notify waiting backends and return */
 		end_memorycontext_reporting();

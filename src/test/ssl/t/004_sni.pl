@@ -151,6 +151,7 @@ $result = $node->restart(fail_ok => 1);
 is($result, 1,
 	'restart succeeds with password-protected key when using the correct passphrase command'
 );
+sleep 4;
 $node->connect_ok(
 	"$connstr sslrootcert=ssl/root+server_ca.crt sslmode=require",
 	"connect with correct server CA cert file sslmode=require");

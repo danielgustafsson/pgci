@@ -1202,6 +1202,8 @@ HeapTupleHeader
 HeapTupleHeaderData
 HeapTupleTableSlot
 HistControl
+HostContext
+HostsLine
 HotStandbyState
 I32
 ICU_Convert_Func

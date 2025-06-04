@@ -2042,7 +2042,7 @@ default_openssl_tls_init(SSL_CTX *context, bool isServerStart, HostsLine *host)
 			SSL_CTX_set_default_passwd_cb_userdata(context, host->ssl_passphrase_cmd);
 		}
 		else
-
+		{
 			/*
 			 * If reloading and no external command is configured, override
 			 * OpenSSL's default handling of passphrase-protected files,
@@ -2050,6 +2050,7 @@ default_openssl_tls_init(SSL_CTX *context, bool isServerStart, HostsLine *host)
 			 * already-running server.
 			 */
 			SSL_CTX_set_default_passwd_cb(context, dummy_ssl_passwd_cb);
+		}
 	}
 }
 

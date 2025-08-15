@@ -18,6 +18,7 @@
 #include <unistd.h>
 
 #include "access/parallel.h"
+#include "access/xlog.h"
 #include "commands/async.h"
 #include "miscadmin.h"
 #include "pgstat.h"
@@ -25,6 +26,7 @@
 #include "replication/logicalctl.h"
 #include "replication/logicalworker.h"
 #include "replication/walsender.h"
+#include "storage/checksum.h"
 #include "storage/condition_variable.h"
 #include "storage/ipc.h"
 #include "storage/latch.h"
@@ -581,6 +583,18 @@ ProcessProcSignalBarrier(void)
 						break;
 					case PROCSIGNAL_BARRIER_UPDATE_XLOG_LOGICAL_INFO:
 						processed = ProcessBarrierUpdateXLogLogicalInfo();
+						break;
+					case PROCSIGNAL_BARRIER_CHECKSUM_INPROGRESS_ON:
+						processed = AbsorbDataChecksumsBarrier(PG_DATA_CHECKSUM_INPROGRESS_ON_VERSION);
+						break;
+					case PROCSIGNAL_BARRIER_CHECKSUM_ON:
+						processed = AbsorbDataChecksumsBarrier(PG_DATA_CHECKSUM_VERSION);
+						break;
+					case PROCSIGNAL_BARRIER_CHECKSUM_INPROGRESS_OFF:
+						processed = AbsorbDataChecksumsBarrier(PG_DATA_CHECKSUM_INPROGRESS_OFF_VERSION);
+						break;
+					case PROCSIGNAL_BARRIER_CHECKSUM_OFF:
+						processed = AbsorbDataChecksumsBarrier(PG_DATA_CHECKSUM_OFF);
 						break;
 				}
 

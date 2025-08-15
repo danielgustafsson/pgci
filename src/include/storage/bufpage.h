@@ -16,6 +16,7 @@
 
 #include "access/xlogdefs.h"
 #include "storage/block.h"
+#include "storage/checksum.h"
 #include "storage/off.h"
 
 /* GUC variable */
@@ -204,7 +205,6 @@ typedef PageHeaderData *PageHeader;
  * handling pages.
  */
 #define PG_PAGE_LAYOUT_VERSION		4
-#define PG_DATA_CHECKSUM_VERSION	1
 
 /* ----------------------------------------------------------------
  *						page support functions

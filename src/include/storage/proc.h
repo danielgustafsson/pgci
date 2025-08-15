@@ -463,11 +463,10 @@ extern PGDLLIMPORT PGPROC *PreparedXactProcs;
  * Background writer, checkpointer, WAL writer, WAL summarizer, and archiver
  * run during normal operation.  Startup process and WAL receiver also consume
  * 2 slots, but WAL writer is launched only after startup has exited, so we
- * only need 6 slots.
+ * only need 6 slots to cover these.
  */
 #define MAX_IO_WORKERS          32
 #define NUM_AUXILIARY_PROCS		(6 + MAX_IO_WORKERS)
-
 
 /* configurable options */
 extern PGDLLIMPORT int DeadlockTimeout;

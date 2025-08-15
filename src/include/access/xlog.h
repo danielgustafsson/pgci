@@ -57,6 +57,7 @@ extern PGDLLIMPORT int CommitDelay;
 extern PGDLLIMPORT int CommitSiblings;
 extern PGDLLIMPORT bool track_wal_io_timing;
 extern PGDLLIMPORT int wal_decode_buffer_size;
+extern PGDLLIMPORT int data_checksums;
 
 extern PGDLLIMPORT int CheckPointSegments;
 
@@ -119,7 +120,7 @@ extern PGDLLIMPORT bool XLogLogicalInfo;
  * of the bits make it to disk, but the checksum wouldn't match.  Also WAL-log
  * them if forced by wal_log_hints=on.
  */
-#define XLogHintBitIsNeeded() (DataChecksumsEnabled() || wal_log_hints)
+#define XLogHintBitIsNeeded() (wal_log_hints || DataChecksumsNeedWrite())
 
 /* Do we need to WAL-log information required only for Hot Standby and logical replication? */
 #define XLogStandbyInfoActive() (wal_level >= WAL_LEVEL_REPLICA)
@@ -241,7 +242,16 @@ extern XLogRecPtr GetXLogWriteRecPtr(void);
 
 extern uint64 GetSystemIdentifier(void);
 extern char *GetMockAuthenticationNonce(void);
-extern bool DataChecksumsEnabled(void);
+extern bool DataChecksumsNeedWrite(void);
+extern bool DataChecksumsNeedVerify(void);
+extern bool DataChecksumsOnInProgress(void);
+extern bool DataChecksumsOffInProgress(void);
+extern void SetDataChecksumsOnInProgress(bool immediate_checkpoint);
+extern void SetDataChecksumsOn(bool immediate_checkpoint);
+extern void SetDataChecksumsOff(bool immediate_checkpoint);
+extern bool AbsorbDataChecksumsBarrier(int target_state);
+extern const char *show_data_checksums(void);
+extern void InitLocalDataChecksumVersion(void);
 extern bool GetDefaultCharSignedness(void);
 extern XLogRecPtr GetFakeLSNForUnloggedRel(void);
 extern Size XLOGShmemSize(void);

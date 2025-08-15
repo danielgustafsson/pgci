@@ -18,6 +18,7 @@
 #include "pgstat.h"
 #include "port/atomics.h"
 #include "postmaster/bgworker_internals.h"
+#include "postmaster/datachecksumsworker.h"
 #include "postmaster/postmaster.h"
 #include "replication/logicallauncher.h"
 #include "replication/logicalworker.h"
@@ -142,6 +143,14 @@ static const struct
 	{
 		.fn_name = "SequenceSyncWorkerMain",
 		.fn_addr = SequenceSyncWorkerMain
+	},
+	{
+		.fn_name = "DataChecksumsWorkerLauncherMain",
+		.fn_addr = DataChecksumsWorkerLauncherMain
+	},
+	{
+		.fn_name = "DataChecksumsWorkerMain",
+		.fn_addr = DataChecksumsWorkerMain
 	}
 };
 

@@ -95,10 +95,27 @@ switch_server_cert(
 	cafile => 'root+client_ca',
 	keyfile => 'server-password',
 	passphrase_cmd => 'echo secret1',
+	passphrase_cmd_reload => 'no',
 	restart => 'no');
 
 $result = $node->restart(fail_ok => 1);
 is($result, 1, 'restart succeeds with password-protected key file');
+
+$result = $node->reload;
+
+
+my $default_ssl_connstr =
+  "sslkey=invalid sslcert=invalid sslrootcert=invalid sslcrl=invalid sslcrldir=invalid";
+
+$common_connstr =
+  "$default_ssl_connstr user=ssltestuser dbname=trustdb hostaddr=$SERVERHOSTADDR host=common-name.pg-ssltest.test";
+
+$node->connect_fails(
+	"$common_connstr sslrootcert=invalid sslmode=require",
+	"connect without passphrase command supporting reload",
+	expected_stderr => qr/SSL error:/);
+
+
 
 # Test compatibility of SSL protocols.
 # TLSv1.1 is lower than TLSv1.2, so it won't work.
@@ -142,11 +159,11 @@ switch_server_cert($node, certfile => 'server-cn-only');
 # Set of default settings for SSL parameters in connection string.  This
 # makes the tests protected against any defaults the environment may have
 # in ~/.postgresql/.
-my $default_ssl_connstr =
-  "sslkey=invalid sslcert=invalid sslrootcert=invalid sslcrl=invalid sslcrldir=invalid";
-
-$common_connstr =
-  "$default_ssl_connstr user=ssltestuser dbname=trustdb hostaddr=$SERVERHOSTADDR host=common-name.pg-ssltest.test";
+#my $default_ssl_connstr =
+#  "sslkey=invalid sslcert=invalid sslrootcert=invalid sslcrl=invalid sslcrldir=invalid";
+#
+#$common_connstr =
+#  "$default_ssl_connstr user=ssltestuser dbname=trustdb hostaddr=$SERVERHOSTADDR host=common-name.pg-ssltest.test";
 
 SKIP:
 {

@@ -54,6 +54,12 @@ timestamptz_to_str(TimestampTz t)
 	time_t		result = (time_t) timestamptz_to_time_t(t);
 	struct tm  *ltime = localtime(&result);
 
+	if (!ltime)
+	{
+		strlcpy(buf, "(timestamp out of range)", sizeof(buf));
+		return buf;
+	}
+
 	strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", ltime);
 	strftime(zone, sizeof(zone), "%Z", ltime);
 

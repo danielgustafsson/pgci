@@ -2445,6 +2445,12 @@ pg_dumpall -p 5432 | psql -d postgres -p 5433
       <entry>client certificate must not be on this list</entry>
      </row>
 
+     <row>
+      <entry><filename>$PGDATA/pg_hosts.conf</filename></entry>
+      <entry>SNI configuration</entry>
+      <entry>defines which certificates to use for which server hostname</entry>
+     </row>
+
     </tbody>
    </tgroup>
   </table>
@@ -2572,6 +2578,67 @@ openssl x509 -req -in server.csr -text -days 365 \
    </para>
   </sect2>
 
+  <sect2 id="ssl-sni">
+   <title>SNI Configuration</title>
+
+   <para>
+    <productname>PostgreSQL</productname> can be configured for
+    <acronym>SNI</acronym> using the <filename>pg_hosts.conf</filename>
+    configuration file. <productname>PostgreSQL</productname> inspects the TLS
+    hostname extension in the SSL connection handshake, and selects the right
+    TLS certificate, key and CA certificate to use for the connection.
+   </para>
+
+   <para>
+    SNI configuration is defined in the hosts configuration file,
+    <filename>pg_hosts.conf</filename>, which is stored in the clusters
+    data directory.  The hosts configuration file contains lines of the general
+    forms:
+<synopsis>
+<replaceable>hostname</replaceable> <replaceable>SSL_certificate</replaceable> <replaceable>SSL_key</replaceable> <replaceable>SSL_CA_certificate</replaceable> <replaceable>SSL_passphrase_cmd</replaceable> <replaceable>SSL_passphrase_cmd_reload</replaceable>
+<replaceable>include</replaceable> <replaceable>file</replaceable>
+<replaceable>include_if_exists</replaceable> <replaceable>file</replaceable>
+<replaceable>include_dir</replaceable> <replaceable>directory</replaceable>
+</synopsis>
+    Comments, whitespace and line continuations are handled in the same way as
+    in <filename>pg_hba.conf</filename>.  <replaceable>hostname</replaceable>
+    is matched against the hostname TLS extension in the SSL handshake.
+    <replaceable>SSL_certificate</replaceable>,
+    <replaceable>SSL_key</replaceable>,
+    <replaceable>SSL_CA_certificate</replaceable>,
+    <replaceable>SSL_passphrase_cmd</replaceable>, and
+    <replaceable>SSL_passphrase_cmd_reload</replaceable>
+    are treated like
+    <xref linkend="guc-ssl-cert-file"/>,
+    <xref linkend="guc-ssl-key-file"/>,
+    <xref linkend="guc-ssl-ca-file"/>,
+    <xref linkend="guc-ssl-passphrase-command"/>, and
+    <xref linkend="guc-ssl-passphrase-command-supports-reload"/> respectively.
+    All fields except <replaceable>SSL_passphrase_cmd</replaceable> and
+    <replaceable>SSL_passphrase_cmd_reload</replaceable> are required. If
+    <replaceable>SSL_passphrase_cmd</replaceable> is defined but not
+    <replaceable>SSL_passphrase_cmd_reload</replaceable> then the default
+    value for <replaceable>SSL_passphrase_cmd_reload</replaceable> is
+    <literal>off</literal>.
+   </para>
+   <para>
+    The SSL configuration from <filename>postgresql.conf</filename> is used
+    in order to set up the TLS handshake such that the hostname extension can
+    be inspected.  When <xref linkend="guc-ssl-snimode"/> is set to
+    <literal>default</literal> this configuration will be the defualt fallback
+    if no matching hostname is found in <filename>pg_hosts.conf</filename>.  If
+    <xref linkend="guc-ssl-snimode"/> is set to <literal>strict</literal> it
+    will only be used to for the handshake until the hostname is inspected, it
+    will not be used for the connection.
+   </para>
+   <para>
+    It is currently not possible to set different <literal>clientname</literal>
+    values for the different certificates.  Any <literal>clientname</literal>
+    setting in <filename>pg_hba.conf</filename> will be applied during
+    authentication regardless of which set of certificates have been loaded
+    via an SNI enabled connection.
+   </para>
+  </sect2>
  </sect1>
 
  <sect1 id="gssapi-enc">

@@ -296,6 +296,11 @@ The CRL directory to use. Implementation is SSL backend specific.
 The passphrase command to use. If not set, an empty passphrase command will
 be set.
 
+=item passphrase_cmd_reload => B<value>
+
+Whether or not to allow passphrase command reloading. If set the passphrase
+command will set to allow reloading.
+
 =item restart => B<value>
 
 If set to 'no', the server won't be restarted after updating the settings.
@@ -326,6 +331,9 @@ sub switch_server_cert
 	$node->append_conf('sslconfig.conf',
 		"ssl_passphrase_command='" . $params{passphrase_cmd} . "'")
 	  if defined $params{passphrase_cmd};
+
+	$node->append_conf('sslconfig.conf', 'ssl_passphrase_command_supports_reload=on')
+	  if defined $params{passphrase_cmd_reload};
 
 	return if (defined($params{restart}) && $params{restart} eq 'no');
 

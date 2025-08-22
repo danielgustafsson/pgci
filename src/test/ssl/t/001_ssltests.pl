@@ -51,8 +51,15 @@ my $SERVERHOSTCIDR = '127.0.0.1/32';
 my $supports_sslcertmode_require =
   check_pg_config("#define HAVE_SSL_CTX_SET_CERT_CB 1");
 
-# Allocation of base connection string shared among multiple tests.
-my $common_connstr;
+# Set of default settings for SSL parameters in connection string.  This
+# makes the tests protected against any defaults the environment may have
+# in ~/.postgresql/.
+my $default_ssl_connstr =
+  "sslkey=invalid sslcert=invalid sslrootcert=invalid sslcrl=invalid sslcrldir=invalid";
+
+# Base connection string shared among multiple tests.
+my $common_connstr =
+  "$default_ssl_connstr user=ssltestuser dbname=trustdb hostaddr=$SERVERHOSTADDR host=common-name.pg-ssltest.test";
 
 #### Set up the server.
 
@@ -85,7 +92,7 @@ switch_server_cert(
 	passphrase_cmd => 'echo wrongpassword',
 	restart => 'no');
 
-$result = $node->restart(fail_ok => 1);
+$result = $node->restart(fail_ok => 1, log_like => qr/could not load private key file/);
 is($result, 0,
 	'restart fails with password-protected key file with wrong password');
 
@@ -95,10 +102,15 @@ switch_server_cert(
 	cafile => 'root+client_ca',
 	keyfile => 'server-password',
 	passphrase_cmd => 'echo secret1',
+	passphrase_cmd_reload => 'yes',
 	restart => 'no');
 
-$result = $node->restart(fail_ok => 1);
+$result = $node->restart(fail_ok => 1, log_unlike => qr/could not load private key file/);
 is($result, 1, 'restart succeeds with password-protected key file');
+
+$node->connect_ok(
+	"$common_connstr sslrootcert=ssl/root+server_ca.crt sslmode=require",
+	"connect with correct server CA cert file sslmode=require");
 
 # Test compatibility of SSL protocols.
 # TLSv1.1 is lower than TLSv1.2, so it won't work.
@@ -138,15 +150,6 @@ $result = $node->restart(fail_ok => 1);
 note "running client tests";
 
 switch_server_cert($node, certfile => 'server-cn-only');
-
-# Set of default settings for SSL parameters in connection string.  This
-# makes the tests protected against any defaults the environment may have
-# in ~/.postgresql/.
-my $default_ssl_connstr =
-  "sslkey=invalid sslcert=invalid sslrootcert=invalid sslcrl=invalid sslcrldir=invalid";
-
-$common_connstr =
-  "$default_ssl_connstr user=ssltestuser dbname=trustdb hostaddr=$SERVERHOSTADDR host=common-name.pg-ssltest.test";
 
 SKIP:
 {

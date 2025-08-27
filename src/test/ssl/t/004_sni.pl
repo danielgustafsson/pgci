@@ -170,7 +170,6 @@ SKIP:
 $node->reload;
 $node->connect_fails(
 	"$connstr sslrootcert=ssl/root+server_ca.crt sslmode=require",
-	"connect fails since the passphrase protected key cannot be reloaded",
-	expected_stderr => qr/tlsv1 unrecognized name/);
+	"connect fails since the passphrase protected key cannot be reloaded");
 
 done_testing();

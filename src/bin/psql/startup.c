@@ -135,20 +135,6 @@ main(int argc, char *argv[])
 	pg_logging_set_locus_callback(log_locus_callback);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("psql"));
 
-	if (argc > 1)
-	{
-		if ((strcmp(argv[1], "-?") == 0) || (argc == 2 && (strcmp(argv[1], "--help") == 0)))
-		{
-			usage(NOPAGER);
-			exit(EXIT_SUCCESS);
-		}
-		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
-		{
-			showVersion();
-			exit(EXIT_SUCCESS);
-		}
-	}
-
 	pset.progname = get_progname(argv[0]);
 
 	pset.db = NULL;
@@ -523,7 +509,7 @@ parse_psql_options(int argc, char *argv[], struct adhoc_opts *options)
 		{"password", no_argument, NULL, 'W'},
 		{"expanded", no_argument, NULL, 'x'},
 		{"no-psqlrc", no_argument, NULL, 'X'},
-		{"help", optional_argument, NULL, 1},
+		{"help", optional_argument, NULL, '?'},
 		{"csv", no_argument, NULL, 2},
 		{NULL, 0, NULL, 0}
 	};
@@ -688,20 +674,6 @@ parse_psql_options(int argc, char *argv[], struct adhoc_opts *options)
 				options->single_txn = true;
 				break;
 			case '?':
-				if (optind <= argc &&
-					strcmp(argv[optind - 1], "-?") == 0)
-				{
-					/* actual help option given */
-					usage(NOPAGER);
-					exit(EXIT_SUCCESS);
-				}
-				else
-				{
-					/* getopt error (unknown option or missing argument) */
-					goto unknown_option;
-				}
-				break;
-			case 1:
 				{
 					if (!optarg || strcmp(optarg, "options") == 0)
 						usage(NOPAGER);

@@ -54,8 +54,6 @@ typedef enum
 
 static PgChecksumMode mode = PG_MODE_CHECK;
 
-static const char *progname;
-
 /*
  * Progress status information.
  */
@@ -64,7 +62,7 @@ static int64 current_size = 0;
 static pg_time_t last_progress_report = 0;
 
 static void
-usage(void)
+usage(const char *progname)
 {
 	printf(_("%s enables, disables, or verifies data checksums in a PostgreSQL database cluster.\n\n"), progname);
 	printf(_("Usage:\n"));
@@ -441,6 +439,8 @@ main(int argc, char *argv[])
 		{"progress", no_argument, NULL, 'P'},
 		{"verbose", no_argument, NULL, 'v'},
 		{"sync-method", required_argument, NULL, 1},
+		{"version", no_argument, NULL, 'V'},
+		{"help", no_argument, NULL, '?'},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -448,26 +448,13 @@ main(int argc, char *argv[])
 	int			c;
 	int			option_index;
 	bool		crc_ok;
+	const char *progname;
 
 	pg_logging_init(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_checksums"));
 	progname = get_progname(argv[0]);
 
-	if (argc > 1)
-	{
-		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
-		{
-			usage();
-			exit(0);
-		}
-		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
-		{
-			puts("pg_checksums (PostgreSQL) " PG_VERSION);
-			exit(0);
-		}
-	}
-
-	while ((c = getopt_long(argc, argv, "cdD:ef:NPv", long_options, &option_index)) != -1)
+	while ((c = getopt_long(argc, argv, "cdD:ef:NPvV?", long_options, &option_index)) != -1)
 	{
 		switch (c)
 		{
@@ -503,6 +490,12 @@ main(int argc, char *argv[])
 				if (!parse_sync_method(optarg, &sync_method))
 					exit(1);
 				break;
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION, progname);
+				exit(0);
+			case '?':
+				usage(progname);
+				exit(0);
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);

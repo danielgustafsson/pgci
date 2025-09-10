@@ -121,7 +121,6 @@ static _stringlist *extraroles = NULL;
 static char *config_auth_datadir = NULL;
 
 /* internal variables */
-static const char *progname;
 static char *logfilename;
 static FILE *logfile;
 static char *difffilename;
@@ -2016,7 +2015,7 @@ create_role(const char *rolename, const _stringlist *granted_dbs)
 }
 
 static void
-help(void)
+help(const char *progname)
 {
 	printf(_("PostgreSQL regression test driver\n"));
 	printf(_("\n"));
@@ -2105,6 +2104,7 @@ regression_main(int argc, char *argv[],
 	int			i;
 	int			option_index;
 	char		buf[MAXPGPATH * 4];
+	const char *progname;
 
 	pg_logging_init(argv[0]);
 	progname = get_progname(argv[0]);
@@ -2142,10 +2142,10 @@ regression_main(int argc, char *argv[],
 		switch (c)
 		{
 			case 'h':
-				help();
+				help(progname);
 				exit(0);
 			case 'V':
-				puts("pg_regress (PostgreSQL) " PG_VERSION);
+				printf("%s (PostgreSQL) " PG_VERSION, progname);
 				exit(0);
 			case 1:
 

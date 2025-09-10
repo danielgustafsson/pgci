@@ -2213,6 +2213,8 @@ main(int argc, char **argv)
 		{"core-files", no_argument, NULL, 'c'},
 		{"wait", no_argument, NULL, 'w'},
 		{"no-wait", no_argument, NULL, 'W'},
+		{"version", no_argument, NULL, 'V'},
+		{"help", no_argument, NULL, '?'},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -2235,21 +2237,6 @@ main(int argc, char **argv)
 	/* Set restrictive mode mask until PGDATA permissions are checked */
 	umask(PG_MODE_MASK_OWNER);
 
-	/* support --help and --version even if invoked as root */
-	if (argc > 1)
-	{
-		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
-		{
-			do_help();
-			exit(0);
-		}
-		else if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
-		{
-			puts("pg_ctl (PostgreSQL) " PG_VERSION);
-			exit(0);
-		}
-	}
-
 	/*
 	 * Disallow running as root, to forestall any possible security holes.
 	 */
@@ -2270,7 +2257,7 @@ main(int argc, char **argv)
 		wait_seconds = atoi(env_wait);
 
 	/* process command-line options */
-	while ((c = getopt_long(argc, argv, "cD:e:l:m:N:o:p:P:sS:t:U:wW",
+	while ((c = getopt_long(argc, argv, "cD:e:l:m:N:o:p:P:sS:t:U:VwW?",
 							long_options, &option_index)) != -1)
 	{
 		switch (c)
@@ -2353,6 +2340,12 @@ main(int argc, char **argv)
 			case 'c':
 				allow_core_files = true;
 				break;
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION, progname);
+				exit(0);
+			case '?':
+				do_help();
+				exit(0);
 			default:
 				/* getopt_long already issued a suitable error message */
 				do_advice();

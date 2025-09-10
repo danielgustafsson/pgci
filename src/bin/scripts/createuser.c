@@ -57,6 +57,8 @@ main(int argc, char *argv[])
 		{"interactive", no_argument, NULL, 3},
 		{"bypassrls", no_argument, NULL, 4},
 		{"no-bypassrls", no_argument, NULL, 5},
+		{"version", no_argument, NULL, 'V'},
+		{"help", no_argument, NULL, '?'},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -97,9 +99,7 @@ main(int argc, char *argv[])
 	progname = get_progname(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pgscripts"));
 
-	handle_help_version_opts(argc, argv, "createuser", help);
-
-	while ((c = getopt_long(argc, argv, "a:c:dDeEg:h:iIlLm:p:PrRsSU:v:wW",
+	while ((c = getopt_long(argc, argv, "a:c:dDeEg:h:iIlLm:p:PrRsSU:v:VwW?",
 							long_options, &optindex)) != -1)
 	{
 		switch (c)
@@ -190,6 +190,12 @@ main(int argc, char *argv[])
 			case 5:
 				bypassrls = TRI_NO;
 				break;
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION "\n", progname);
+				exit(0);
+			case '?':
+				help(progname);
+				exit(0);
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);

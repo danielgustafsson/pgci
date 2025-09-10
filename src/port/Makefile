@@ -46,6 +46,7 @@ OBJS = \
 	pg_bitutils.o \
 	pg_localeconv_r.o \
 	pg_numa.o \
+	pg_option_utils.o \
 	pg_popcount_aarch64.o \
 	pg_popcount_avx512.o \
 	pg_strong_random.o \

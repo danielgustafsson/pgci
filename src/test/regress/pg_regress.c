@@ -2105,6 +2105,7 @@ regression_main(int argc, char *argv[],
 	int			i;
 	int			option_index;
 	char		buf[MAXPGPATH * 4];
+	const char *progname;
 
 	pg_logging_init(argv[0]);
 	progname = get_progname(argv[0]);
@@ -2145,7 +2146,7 @@ regression_main(int argc, char *argv[],
 				help();
 				exit(0);
 			case 'V':
-				puts("pg_regress (PostgreSQL) " PG_VERSION);
+				printf("%s (PostgreSQL) " PG_VERSION "\n", progname);
 				exit(0);
 			case 1:
 

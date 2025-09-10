@@ -126,11 +126,14 @@ add_preprocessor_define(char *define)
 }
 
 #define ECPG_GETOPT_LONG_REGRESSION		1
+#define ECPG_GETOPT_LONG_HELP			2
 int
 main(int argc, char *const argv[])
 {
 	static struct option ecpg_options[] = {
 		{"regression", no_argument, NULL, ECPG_GETOPT_LONG_REGRESSION},
+		{"version", no_argument, NULL, 'V'},
+		{"help", no_argument, NULL, ECPG_GETOPT_LONG_HELP},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -153,22 +156,8 @@ main(int argc, char *const argv[])
 		return ILLEGAL_OPTION;
 	}
 
-	if (argc > 1)
-	{
-		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
-		{
-			help(progname);
-			exit(0);
-		}
-		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
-		{
-			printf("ecpg (PostgreSQL) %s\n", PG_VERSION);
-			exit(0);
-		}
-	}
-
 	output_filename = NULL;
-	while ((c = getopt_long(argc, argv, "cC:dD:hiI:o:r:tv", ecpg_options, NULL)) != -1)
+	while ((c = getopt_long(argc, argv, "cC:dD:hiI:o:r:tvV?", ecpg_options, NULL)) != -1)
 	{
 		switch (c)
 		{
@@ -256,8 +245,23 @@ main(int argc, char *const argv[])
 			case ECPG_GETOPT_LONG_REGRESSION:
 				regression_mode = true;
 				break;
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION "\n", progname);
+				exit(0);
+			case ECPG_GETOPT_LONG_HELP:
+				help(progname);
+				exit(0);
+				/* -? help or invalid option */
+			case '?':
+				if (is_help_param(argc, (char **) argv, optind))
+				{
+					help(progname);
+					exit(0);
+				}
+				fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
+				exit(1);
 			default:
-				fprintf(stderr, _("Try \"%s --help\" for more information.\n"), argv[0]);
+				fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
 				return ILLEGAL_OPTION;
 		}
 	}
@@ -283,7 +287,7 @@ main(int argc, char *const argv[])
 	if (optind >= argc)			/* no files specified */
 	{
 		fprintf(stderr, _("%s: no input files specified\n"), progname);
-		fprintf(stderr, _("Try \"%s --help\" for more information.\n"), argv[0]);
+		fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
 		return ILLEGAL_OPTION;
 	}
 	else

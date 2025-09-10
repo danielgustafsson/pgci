@@ -115,7 +115,7 @@ static HANDLE shutdownHandles[2];
 
 static void write_stderr(const char *fmt,...) pg_attribute_printf(1, 2);
 static void do_advice(void);
-static void do_help(void);
+static void do_help(const char *progname);
 static void set_mode(char *modeopt);
 static void set_sig(char *signame);
 static void do_init(void);
@@ -1970,7 +1970,7 @@ do_advice(void)
 
 
 static void
-do_help(void)
+do_help(const char *progname)
 {
 	printf(_("%s is a utility to initialize, start, stop, or control a PostgreSQL server.\n\n"), progname);
 	printf(_("Usage:\n"));
@@ -2202,7 +2202,7 @@ int
 main(int argc, char **argv)
 {
 	static struct option long_options[] = {
-		{"help", no_argument, NULL, '?'},
+		{"help", no_argument, NULL, 1},
 		{"version", no_argument, NULL, 'V'},
 		{"log", required_argument, NULL, 'l'},
 		{"mode", required_argument, NULL, 'm'},
@@ -2235,21 +2235,6 @@ main(int argc, char **argv)
 	/* Set restrictive mode mask until PGDATA permissions are checked */
 	umask(PG_MODE_MASK_OWNER);
 
-	/* support --help and --version even if invoked as root */
-	if (argc > 1)
-	{
-		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
-		{
-			do_help();
-			exit(0);
-		}
-		else if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
-		{
-			puts("pg_ctl (PostgreSQL) " PG_VERSION);
-			exit(0);
-		}
-	}
-
 	/*
 	 * Disallow running as root, to forestall any possible security holes.
 	 */
@@ -2270,7 +2255,7 @@ main(int argc, char **argv)
 		wait_seconds = atoi(env_wait);
 
 	/* process command-line options */
-	while ((c = getopt_long(argc, argv, "cD:e:l:m:N:o:p:P:sS:t:U:wW",
+	while ((c = getopt_long(argc, argv, "cD:e:l:m:N:o:p:P:sS:t:U:VwW?",
 							long_options, &option_index)) != -1)
 	{
 		switch (c)
@@ -2353,6 +2338,21 @@ main(int argc, char **argv)
 			case 'c':
 				allow_core_files = true;
 				break;
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION "\n", progname);
+				exit(0);
+			case 1:
+				do_help(progname);
+				exit(0);
+				/* -? help or invalid option */
+			case '?':
+				if (is_help_param(argc, argv, optind))
+				{
+					do_help(progname);
+					exit(0);
+				}
+				do_advice();
+				exit(1);
 			default:
 				/* getopt_long already issued a suitable error message */
 				do_advice();

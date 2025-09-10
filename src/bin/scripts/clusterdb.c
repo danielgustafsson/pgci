@@ -42,6 +42,8 @@ main(int argc, char *argv[])
 		{"table", required_argument, NULL, 't'},
 		{"verbose", no_argument, NULL, 'v'},
 		{"maintenance-db", required_argument, NULL, 2},
+		{"version", no_argument, NULL, 'V'},
+		{"help", no_argument, NULL, 3},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -66,9 +68,7 @@ main(int argc, char *argv[])
 	progname = get_progname(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pgscripts"));
 
-	handle_help_version_opts(argc, argv, "clusterdb", help);
-
-	while ((c = getopt_long(argc, argv, "ad:eh:p:qt:U:vwW", long_options, &optindex)) != -1)
+	while ((c = getopt_long(argc, argv, "ad:eh:p:qt:U:vVwW?", long_options, &optindex)) != -1)
 	{
 		switch (c)
 		{
@@ -99,6 +99,9 @@ main(int argc, char *argv[])
 			case 'v':
 				verbose = true;
 				break;
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION "\n", progname);
+				exit(0);
 			case 'w':
 				prompt_password = TRI_NO;
 				break;
@@ -108,6 +111,13 @@ main(int argc, char *argv[])
 			case 2:
 				maintenance_db = pg_strdup(optarg);
 				break;
+			case 3:
+				help(progname);
+				exit(0);
+			/* distinguish between -? and invalid option manually */
+			case '?':
+				handle_help_opt(argc, argv, optind, progname, help);
+				/* Fall through to invalid option */
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);

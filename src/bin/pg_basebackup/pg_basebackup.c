@@ -195,7 +195,7 @@ static volatile LONG has_xlogendptr = 0;
 static PQExpBuffer recoveryconfcontents = NULL;
 
 /* Function headers */
-static void usage(void);
+static void usage(const char *progname);
 static void verify_dir_is_empty_or_create(char *dirname, bool *created, bool *found);
 static void progress_update_filename(const char *filename);
 static void progress_report(int tablespacenum, bool force, bool finished);
@@ -388,7 +388,7 @@ tablespace_list_append(const char *arg)
 
 
 static void
-usage(void)
+usage(const char *progname)
 {
 	printf(_("%s takes a base backup of a running PostgreSQL server.\n\n"),
 		   progname);
@@ -2357,7 +2357,7 @@ int
 main(int argc, char **argv)
 {
 	static struct option long_options[] = {
-		{"help", no_argument, NULL, '?'},
+		{"help", no_argument, NULL, 9},
 		{"version", no_argument, NULL, 'V'},
 		{"pgdata", required_argument, NULL, 'D'},
 		{"format", required_argument, NULL, 'F'},
@@ -2400,6 +2400,7 @@ main(int argc, char **argv)
 	char	   *compression_algorithm = "none";
 	char	   *compression_detail = NULL;
 	char	   *incremental_manifest = NULL;
+	const char *progname;
 	CompressionLocation compressloc = COMPRESS_LOCATION_UNSPECIFIED;
 	pg_compress_specification client_compress;
 
@@ -2407,24 +2408,9 @@ main(int argc, char **argv)
 	progname = get_progname(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_basebackup"));
 
-	if (argc > 1)
-	{
-		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
-		{
-			usage();
-			exit(0);
-		}
-		else if (strcmp(argv[1], "-V") == 0
-				 || strcmp(argv[1], "--version") == 0)
-		{
-			puts("pg_basebackup (PostgreSQL) " PG_VERSION);
-			exit(0);
-		}
-	}
-
 	atexit(cleanup_directories_atexit);
 
-	while ((c = getopt_long(argc, argv, "c:Cd:D:F:h:i:l:nNp:Pr:Rs:S:t:T:U:vwWX:zZ:",
+	while ((c = getopt_long(argc, argv, "c:Cd:D:F:h:i:l:nNp:Pr:Rs:S:t:T:U:vVwWX:zZ:?",
 							long_options, &option_index)) != -1)
 	{
 		switch (c)
@@ -2511,6 +2497,9 @@ main(int argc, char **argv)
 			case 'v':
 				verbose++;
 				break;
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION "\n", progname);
+				exit(0);
 			case 'w':
 				dbgetpassword = -1;
 				break;
@@ -2571,6 +2560,13 @@ main(int argc, char **argv)
 				if (!parse_sync_method(optarg, &sync_method))
 					exit(1);
 				break;
+			case 9:
+				usage(progname);
+				exit(0);
+			/* distinguish between -? and invalid option manually */
+			case '?':
+				handle_help_opt(argc, argv, optind, progname, usage);
+				/* fall through to invalid option */
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);

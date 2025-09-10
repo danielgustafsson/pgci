@@ -273,6 +273,8 @@ main(int argc, char *argv[])
 		{"install-missing", optional_argument, NULL, 13},
 		{"checkunique", no_argument, NULL, 14},
 
+		{"version", no_argument, NULL, 'V'},
+		{"help", no_argument, NULL, 15},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -293,10 +295,8 @@ main(int argc, char *argv[])
 	progname = get_progname(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_amcheck"));
 
-	handle_help_version_opts(argc, argv, progname, help);
-
 	/* process command-line options */
-	while ((c = getopt_long(argc, argv, "ad:D:eh:Hi:I:j:p:Pr:R:s:S:t:T:U:vwW",
+	while ((c = getopt_long(argc, argv, "ad:D:eh:Hi:I:j:p:Pr:R:s:S:t:T:U:vVwW?",
 							long_options, &optindex)) != -1)
 	{
 		char	   *endptr;
@@ -372,6 +372,9 @@ main(int argc, char *argv[])
 				opts.verbose = true;
 				pg_logging_increase_verbosity();
 				break;
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION "\n", progname);
+				exit(0);
 			case 'w':
 				prompt_password = TRI_NO;
 				break;
@@ -442,6 +445,13 @@ main(int argc, char *argv[])
 			case 14:
 				opts.checkunique = true;
 				break;
+			case 15:
+				help(progname);
+				exit(0);
+			/* distinguish between -? and invalid option manually */
+			case '?':
+				handle_help_opt(argc, argv, optind, progname, help);
+				/* fall through to invalid option */
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);

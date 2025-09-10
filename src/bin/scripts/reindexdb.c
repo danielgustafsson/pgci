@@ -86,6 +86,8 @@ main(int argc, char *argv[])
 		{"concurrently", no_argument, NULL, 1},
 		{"maintenance-db", required_argument, NULL, 2},
 		{"tablespace", required_argument, NULL, 3},
+		{"version", no_argument, NULL, 'V'},
+		{"help", no_argument, NULL, 4},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -116,10 +118,8 @@ main(int argc, char *argv[])
 	progname = get_progname(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pgscripts"));
 
-	handle_help_version_opts(argc, argv, "reindexdb", help);
-
 	/* process command-line options */
-	while ((c = getopt_long(argc, argv, "ad:eh:i:j:qp:sS:t:U:vwW", long_options, &optindex)) != -1)
+	while ((c = getopt_long(argc, argv, "ad:eh:i:j:qp:sS:t:U:vVwW?", long_options, &optindex)) != -1)
 	{
 		switch (c)
 		{
@@ -164,6 +164,9 @@ main(int argc, char *argv[])
 			case 'v':
 				verbose = true;
 				break;
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION "\n", progname);
+				exit(0);
 			case 'w':
 				prompt_password = TRI_NO;
 				break;
@@ -179,6 +182,13 @@ main(int argc, char *argv[])
 			case 3:
 				tablespace = pg_strdup(optarg);
 				break;
+			case 4:
+				help(progname);
+				exit(0);
+			/* distinguish between -? and invalid option manually */
+			case '?':
+				handle_help_opt(argc, argv, optind, progname, help);
+				/* Fall through to invalid option */
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);

@@ -13,6 +13,7 @@
 #include "common/connect.h"
 #include "common/logging.h"
 #include "common/string.h"
+#include "fe_utils/option_utils.h"
 #include "getopt_long.h"
 #include "libpq-fe.h"
 #include "pg_getopt.h"
@@ -77,7 +78,7 @@ get_opts(int argc, char **argv, struct options *my_opts)
 		{"username", required_argument, NULL, 'U'},
 		{"version", no_argument, NULL, 'V'},
 		{"extended", no_argument, NULL, 'x'},
-		{"help", no_argument, NULL, '?'},
+		{"help", no_argument, NULL, 1},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -101,22 +102,8 @@ get_opts(int argc, char **argv, struct options *my_opts)
 	my_opts->username = NULL;
 	my_opts->progname = progname;
 
-	if (argc > 1)
-	{
-		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
-		{
-			help(progname);
-			exit(0);
-		}
-		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
-		{
-			puts("oid2name (PostgreSQL) " PG_VERSION);
-			exit(0);
-		}
-	}
-
 	/* get opts */
-	while ((c = getopt_long(argc, argv, "d:f:h:H:io:p:qsSt:U:x", long_options, &optindex)) != -1)
+	while ((c = getopt_long(argc, argv, "d:f:h:H:io:p:qsSt:U:Vx?", long_options, &optindex)) != -1)
 	{
 		switch (c)
 		{
@@ -176,11 +163,25 @@ get_opts(int argc, char **argv, struct options *my_opts)
 				my_opts->username = pg_strdup(optarg);
 				break;
 
+				/* display version and exit */
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION "\n", progname);
+				exit(0);
+
 				/* display extra columns */
 			case 'x':
 				my_opts->extended = true;
 				break;
 
+				/* display help and exit */
+			case 1:
+				help(progname);
+				exit(0);
+
+				/* distinguish between -? and invalid option manually */
+			case '?':
+				handle_help_opt(argc, argv, optind, progname, help);
+				/* fall through to invalid option */
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);

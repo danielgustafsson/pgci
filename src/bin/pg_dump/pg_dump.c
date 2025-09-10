@@ -538,6 +538,8 @@ main(int argc, char **argv)
 		{"exclude-extension", required_argument, NULL, 17},
 		{"sequence-data", no_argument, &dopt.sequence_data, 1},
 		{"restrict-key", required_argument, NULL, 25},
+		{"version", no_argument, NULL, 'V'},
+		{"help", no_argument, NULL, 26},
 
 		{NULL, 0, NULL, 0}
 	};
@@ -554,23 +556,9 @@ main(int argc, char **argv)
 
 	progname = get_progname(argv[0]);
 
-	if (argc > 1)
-	{
-		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
-		{
-			help(progname);
-			exit_nicely(0);
-		}
-		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
-		{
-			puts("pg_dump (PostgreSQL) " PG_VERSION);
-			exit_nicely(0);
-		}
-	}
-
 	InitDumpOptions(&dopt);
 
-	while ((c = getopt_long(argc, argv, "abBcCd:e:E:f:F:h:j:n:N:Op:RsS:t:T:U:vwWxXZ:",
+	while ((c = getopt_long(argc, argv, "abBcCd:e:E:f:F:h:j:n:N:Op:RsS:t:T:U:vVwWxXZ:?",
 							long_options, &optindex)) != -1)
 	{
 		switch (c)
@@ -673,6 +661,10 @@ main(int argc, char **argv)
 				g_verbose = true;
 				pg_logging_increase_verbosity();
 				break;
+
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION "\n", progname);
+				exit_nicely(0);
 
 			case 'w':
 				dopt.cparams.promptPassword = TRI_NO;
@@ -802,6 +794,14 @@ main(int argc, char **argv)
 				dopt.restrict_key = pg_strdup(optarg);
 				break;
 
+			case 26:
+				help(progname);
+				exit_nicely(0);
+
+			/* distinguish between -? and invalid option manually */
+			case '?':
+				handle_help_opt(argc, argv, optind, progname, help);
+				/* Fall through to invalid option */
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);

@@ -88,7 +88,7 @@ static void KillExistingXLOG(void);
 static void KillExistingArchiveStatus(void);
 static void KillExistingWALSummaries(void);
 static void WriteEmptyXLOG(void);
-static void usage(void);
+static void usage(const char *progname);
 
 
 int
@@ -108,6 +108,8 @@ main(int argc, char *argv[])
 		{"next-transaction-id", required_argument, NULL, 'x'},
 		{"wal-segsize", required_argument, NULL, 1},
 		{"char-signedness", required_argument, NULL, 2},
+		{"version", no_argument, NULL, 'V'},
+		{"help", no_argument, NULL, '?'},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -125,22 +127,7 @@ main(int argc, char *argv[])
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_resetwal"));
 	progname = get_progname(argv[0]);
 
-	if (argc > 1)
-	{
-		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
-		{
-			usage();
-			exit(0);
-		}
-		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
-		{
-			puts("pg_resetwal (PostgreSQL) " PG_VERSION);
-			exit(0);
-		}
-	}
-
-
-	while ((c = getopt_long(argc, argv, "c:D:e:fl:m:no:O:u:x:", long_options, NULL)) != -1)
+	while ((c = getopt_long(argc, argv, "c:D:e:fl:m:no:O:u:Vx:?", long_options, NULL)) != -1)
 	{
 		switch (c)
 		{
@@ -292,6 +279,10 @@ main(int argc, char *argv[])
 				log_fname = pg_strdup(optarg);
 				break;
 
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION, progname);
+				exit(0);
+
 			case 1:
 				{
 					int			wal_segsize_mb;
@@ -321,6 +312,14 @@ main(int argc, char *argv[])
 					break;
 				}
 
+			case 3:
+				usage(progname);
+				exit(0);
+
+			/* distinguish between -? and invalid option manually */
+			case '?':
+				handle_help_opt(argc, argv, optind, progname, usage);
+				/* Fall through to invalid option */
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
@@ -1187,7 +1186,7 @@ WriteEmptyXLOG(void)
 
 
 static void
-usage(void)
+usage(const char *progname)
 {
 	printf(_("%s resets the PostgreSQL write-ahead log.\n\n"), progname);
 	printf(_("Usage:\n"));

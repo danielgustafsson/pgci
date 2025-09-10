@@ -471,21 +471,7 @@ main(int argc, char **argv)
 	param.transaction_limit = 1000;
 
 	/* Process command-line arguments */
-	if (argc > 1)
-	{
-		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
-		{
-			usage(progname);
-			exit(0);
-		}
-		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
-		{
-			puts("vacuumlo (PostgreSQL) " PG_VERSION);
-			exit(0);
-		}
-	}
-
-	while ((c = getopt_long(argc, argv, "h:l:np:U:vwW", long_options, &optindex)) != -1)
+	while ((c = getopt_long(argc, argv, "h:l:np:U:vVwW?", long_options, &optindex)) != -1)
 	{
 		switch (c)
 		{
@@ -519,6 +505,12 @@ main(int argc, char **argv)
 			case 'W':
 				param.pg_prompt = TRI_YES;
 				break;
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION, progname);
+				exit(0);
+			case '?':
+				usage(progname);
+				exit(0);
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);

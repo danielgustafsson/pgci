@@ -64,6 +64,9 @@ parseCommandLine(int argc, char *argv[])
 		{"set-char-signedness", required_argument, NULL, 6},
 		{"swap", no_argument, NULL, 7},
 
+		{"version", no_argument, NULL, 'V'},
+		{"help", no_argument, NULL, '?'},
+
 		{NULL, 0, NULL, 0}
 	};
 	int			option;			/* Command line option */
@@ -91,25 +94,11 @@ parseCommandLine(int argc, char *argv[])
 		os_info.user = pg_strdup(getenv("PGUSER"));
 	}
 
-	if (argc > 1)
-	{
-		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
-		{
-			usage();
-			exit(0);
-		}
-		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
-		{
-			puts("pg_upgrade (PostgreSQL) " PG_VERSION);
-			exit(0);
-		}
-	}
-
 	/* Allow help and version to be run as root, so do the test here. */
 	if (os_user_effective_id == 0)
 		pg_fatal("%s: cannot be run as root", os_info.progname);
 
-	while ((option = getopt_long(argc, argv, "b:B:cd:D:j:kNo:O:p:P:rs:U:v",
+	while ((option = getopt_long(argc, argv, "b:B:cd:D:j:kNo:O:p:P:rs:U:vV?",
 								 long_options, &optindex)) != -1)
 	{
 		switch (option)
@@ -233,6 +222,14 @@ parseCommandLine(int argc, char *argv[])
 			case 7:
 				user_opts.transfer_mode = TRANSFER_MODE_SWAP;
 				break;
+
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION, os_info.progname);
+				exit(0);
+
+			case '?':
+				usage();
+				exit(0);
 
 			default:
 				fprintf(stderr, _("Try \"%s --help\" for more information.\n"),

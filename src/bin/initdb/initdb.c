@@ -3195,6 +3195,8 @@ main(int argc, char *argv[])
 		{"sync-method", required_argument, NULL, 19},
 		{"no-data-checksums", no_argument, NULL, 20},
 		{"no-sync-data-files", no_argument, NULL, 21},
+		{"version", no_argument, NULL, 'V'},
+		{"help", no_argument, NULL, '?'},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -3220,23 +3222,9 @@ main(int argc, char *argv[])
 	progname = get_progname(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("initdb"));
 
-	if (argc > 1)
-	{
-		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
-		{
-			usage(progname);
-			exit(0);
-		}
-		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
-		{
-			puts("initdb (PostgreSQL) " PG_VERSION);
-			exit(0);
-		}
-	}
-
 	/* process command-line options */
 
-	while ((c = getopt_long(argc, argv, "A:c:dD:E:gkL:nNsST:U:WX:",
+	while ((c = getopt_long(argc, argv, "?A:c:dD:E:gkL:nNsST:U:VWX:",
 							long_options, &option_index)) != -1)
 	{
 		switch (c)
@@ -3392,6 +3380,12 @@ main(int argc, char *argv[])
 			case 21:
 				sync_data_files = false;
 				break;
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION, progname);
+				exit(0);
+			case '?':
+				usage(progname);
+				exit(0);
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);

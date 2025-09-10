@@ -37,8 +37,6 @@
  * give a thought about doing the same in pg_walinspect contrib module as well.
  */
 
-static const char *progname;
-
 static int	WalSegSz;
 static volatile sig_atomic_t time_to_stop = false;
 
@@ -753,7 +751,7 @@ XLogDumpDisplayStats(XLogDumpConfig *config, XLogStats *stats)
 }
 
 static void
-usage(void)
+usage(const char *progname)
 {
 	printf(_("%s decodes and displays PostgreSQL write-ahead logs for debugging.\n\n"),
 		   progname);
@@ -826,7 +824,7 @@ main(int argc, char **argv)
 
 	int			option;
 	int			optindex = 0;
-
+	const char *progname;
 #ifndef WIN32
 	pqsignal(SIGINT, sigint_handler);
 #endif
@@ -834,20 +832,6 @@ main(int argc, char **argv)
 	pg_logging_init(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_waldump"));
 	progname = get_progname(argv[0]);
-
-	if (argc > 1)
-	{
-		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
-		{
-			usage();
-			exit(0);
-		}
-		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
-		{
-			puts("pg_waldump (PostgreSQL) " PG_VERSION);
-			exit(0);
-		}
-	}
 
 	memset(&private, 0, sizeof(XLogDumpPrivate));
 	memset(&config, 0, sizeof(XLogDumpConfig));
@@ -885,7 +869,7 @@ main(int argc, char **argv)
 		goto bad_argument;
 	}
 
-	while ((option = getopt_long(argc, argv, "bB:e:fF:n:p:qr:R:s:t:wx:z",
+	while ((option = getopt_long(argc, argv, "bB:e:fF:n:p:qr:R:s:t:Vwx:z?",
 								 long_options, &optindex)) != -1)
 	{
 		switch (option)
@@ -1076,6 +1060,12 @@ main(int argc, char **argv)
 			case 1:
 				config.save_fullpage_path = pg_strdup(optarg);
 				break;
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION, progname);
+				exit(0);
+			case '?':
+				usage(progname);
+				exit(0);
 			default:
 				goto bad_argument;
 		}

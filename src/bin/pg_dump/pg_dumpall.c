@@ -187,6 +187,8 @@ main(int argc, char *argv[])
 		{"filter", required_argument, NULL, 8},
 		{"sequence-data", no_argument, &sequence_data, 1},
 		{"restrict-key", required_argument, NULL, 9},
+		{"version", no_argument, NULL, 'V'},
+		{"help", no_argument, NULL, '?'},
 
 		{NULL, 0, NULL, 0}
 	};
@@ -214,20 +216,6 @@ main(int argc, char *argv[])
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_dump"));
 	progname = get_progname(argv[0]);
 
-	if (argc > 1)
-	{
-		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
-		{
-			help();
-			exit_nicely(0);
-		}
-		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
-		{
-			puts("pg_dumpall (PostgreSQL) " PG_VERSION);
-			exit_nicely(0);
-		}
-	}
-
 	if ((ret = find_other_exec(argv[0], "pg_dump", PGDUMP_VERSIONSTR,
 							   pg_dump_bin)) < 0)
 	{
@@ -246,7 +234,7 @@ main(int argc, char *argv[])
 
 	pgdumpopts = createPQExpBuffer();
 
-	while ((c = getopt_long(argc, argv, "acd:E:f:gh:l:Op:rsS:tU:vwWx", long_options, &optindex)) != -1)
+	while ((c = getopt_long(argc, argv, "acd:E:f:gh:l:Op:rsS:tU:vVwWx?", long_options, &optindex)) != -1)
 	{
 		switch (c)
 		{
@@ -379,6 +367,15 @@ main(int argc, char *argv[])
 				appendPQExpBufferStr(pgdumpopts, " --restrict-key ");
 				appendShellString(pgdumpopts, optarg);
 				break;
+
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION, progname);
+				exit_nicely(0);
+
+			case '?':
+				help();
+				exit_nicely(0);
+
 
 			default:
 				/* getopt_long already emitted a complaint */

@@ -101,22 +101,8 @@ get_opts(int argc, char **argv, struct options *my_opts)
 	my_opts->username = NULL;
 	my_opts->progname = progname;
 
-	if (argc > 1)
-	{
-		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
-		{
-			help(progname);
-			exit(0);
-		}
-		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
-		{
-			puts("oid2name (PostgreSQL) " PG_VERSION);
-			exit(0);
-		}
-	}
-
 	/* get opts */
-	while ((c = getopt_long(argc, argv, "d:f:h:H:io:p:qsSt:U:x", long_options, &optindex)) != -1)
+	while ((c = getopt_long(argc, argv, "d:f:h:H:io:p:qsSt:U:Vx?", long_options, &optindex)) != -1)
 	{
 		switch (c)
 		{
@@ -180,6 +166,14 @@ get_opts(int argc, char **argv, struct options *my_opts)
 			case 'x':
 				my_opts->extended = true;
 				break;
+
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION, progname);
+				exit(0);
+
+			case '?':
+				help(progname);
+				exit(0);
 
 			default:
 				/* getopt_long already emitted a complaint */

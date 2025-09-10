@@ -36,6 +36,8 @@ main(int argc, char *argv[])
 		{"if-exists", no_argument, &if_exists, 1},
 		{"maintenance-db", required_argument, NULL, 2},
 		{"force", no_argument, NULL, 'f'},
+		{"version", no_argument, NULL, 'V'},
+		{"help", no_argument, NULL, '?'},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -63,9 +65,7 @@ main(int argc, char *argv[])
 	progname = get_progname(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pgscripts"));
 
-	handle_help_version_opts(argc, argv, "dropdb", help);
-
-	while ((c = getopt_long(argc, argv, "efh:ip:U:wW", long_options, &optindex)) != -1)
+	while ((c = getopt_long(argc, argv, "efh:ip:U:wWV?", long_options, &optindex)) != -1)
 	{
 		switch (c)
 		{
@@ -99,6 +99,12 @@ main(int argc, char *argv[])
 			case 2:
 				maintenance_db = pg_strdup(optarg);
 				break;
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION "\n", progname);
+				exit(0);
+			case '?':
+				help(progname);
+				exit(0);
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);

@@ -142,6 +142,8 @@ main(int argc, char **argv)
 		{"statistics-only", no_argument, &statistics_only, 1},
 		{"filter", required_argument, NULL, 4},
 		{"restrict-key", required_argument, NULL, 6},
+		{"version", no_argument, NULL, 'V'},
+		{"help", no_argument, NULL, '?'},
 
 		{NULL, 0, NULL, 0}
 	};
@@ -156,21 +158,7 @@ main(int argc, char **argv)
 
 	progname = get_progname(argv[0]);
 
-	if (argc > 1)
-	{
-		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
-		{
-			usage(progname);
-			exit_nicely(0);
-		}
-		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
-		{
-			puts("pg_restore (PostgreSQL) " PG_VERSION);
-			exit_nicely(0);
-		}
-	}
-
-	while ((c = getopt_long(argc, argv, "acCd:ef:F:h:I:j:lL:n:N:Op:P:RsS:t:T:U:vwWx1",
+	while ((c = getopt_long(argc, argv, "acCd:ef:F:h:I:j:lL:n:N:Op:P:RsS:t:T:U:vVwWx1?",
 							cmdopts, NULL)) != -1)
 	{
 		switch (c)
@@ -320,6 +308,14 @@ main(int argc, char **argv)
 			case 6:
 				opts->restrict_key = pg_strdup(optarg);
 				break;
+
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION, progname);
+				exit_nicely(0);
+
+			case '?':
+				usage(progname);
+				exit_nicely(0);
 
 			default:
 				/* getopt_long already emitted a complaint */

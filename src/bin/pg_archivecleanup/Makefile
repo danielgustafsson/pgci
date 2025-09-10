@@ -13,7 +13,7 @@ OBJS = \
 
 all: pg_archivecleanup
 
-pg_archivecleanup: $(OBJS) | submake-libpgport
+pg_archivecleanup: $(OBJS) | submake-libpgport submake-libpgfeutils
 	$(CC) $(CFLAGS) $^ $(LDFLAGS) $(LDFLAGS_EX) $(LIBS) -o $@$(X)
 
 install: all installdirs

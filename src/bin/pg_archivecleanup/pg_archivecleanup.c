@@ -17,9 +17,8 @@
 
 #include "access/xlog_internal.h"
 #include "common/logging.h"
+#include "fe_utils/option_utils.h"
 #include "getopt_long.h"
-
-static const char *progname;
 
 /* Options and defaults */
 static bool dryrun = false;		/* are we performing a dry-run operation? */
@@ -181,7 +180,7 @@ CleanupPriorWALFiles(void)
  *	  and decide whether we need cleanup
  */
 static void
-SetWALFileNameForCleanup(void)
+SetWALFileNameForCleanup(const char *progname)
 {
 	bool		fnameOK = false;
 
@@ -255,7 +254,7 @@ SetWALFileNameForCleanup(void)
  */
 
 static void
-usage(void)
+usage(const char *progname)
 {
 	printf(_("%s removes older WAL files from PostgreSQL archives.\n\n"), progname);
 	printf(_("Usage:\n"));
@@ -291,29 +290,19 @@ main(int argc, char **argv)
 		{"debug", no_argument, NULL, 'd'},
 		{"dry-run", no_argument, NULL, 'n'},
 		{"strip-extension", required_argument, NULL, 'x'},
+		{"version", no_argument, NULL, 'V'},
+		{"help", no_argument, NULL, 1},
 		{NULL, 0, NULL, 0}
 	};
 	int			c;
+	const char *progname;
+
 
 	pg_logging_init(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_archivecleanup"));
 	progname = get_progname(argv[0]);
 
-	if (argc > 1)
-	{
-		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
-		{
-			usage();
-			exit(0);
-		}
-		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
-		{
-			puts("pg_archivecleanup (PostgreSQL) " PG_VERSION);
-			exit(0);
-		}
-	}
-
-	while ((c = getopt_long(argc, argv, "bdnx:", long_options, NULL)) != -1)
+	while ((c = getopt_long(argc, argv, "bdnx:V?", long_options, NULL)) != -1)
 	{
 		switch (c)
 		{
@@ -326,10 +315,25 @@ main(int argc, char **argv)
 			case 'n':			/* Dry-Run mode */
 				dryrun = true;
 				break;
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION "\n", progname);
+				exit(0);
 			case 'x':
 				additional_ext = pg_strdup(optarg); /* Extension to remove
 													 * from xlogfile names */
 				break;
+			case 1:
+				usage(progname);
+				exit(0);
+				/* -? or invalid option */
+			case '?':
+				if (is_help_param(argc, argv, optind))
+				{
+					usage(progname);
+					exit(0);
+				}
+				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
+				exit(1);
 			default:
 				/* getopt already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
@@ -383,7 +387,7 @@ main(int argc, char **argv)
 	/*
 	 * Check filename is a valid name, then process to find cut-off
 	 */
-	SetWALFileNameForCleanup();
+	SetWALFileNameForCleanup(progname);
 
 	pg_log_debug("keeping WAL file \"%s/%s\" and later",
 				 archiveLocation, exclusiveCleanupFileName);

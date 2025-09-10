@@ -19,7 +19,7 @@
 #include "pg_upgrade.h"
 #include "utils/pidfile.h"
 
-static void usage(void);
+static void usage(const char *progname);
 static void check_required_directory(char **dirpath,
 									 const char *envVarName, bool useCwd,
 									 const char *cmdLineOption, const char *description,
@@ -64,6 +64,9 @@ parseCommandLine(int argc, char *argv[])
 		{"set-char-signedness", required_argument, NULL, 6},
 		{"swap", no_argument, NULL, 7},
 
+		{"version", no_argument, NULL, 'V'},
+		{"help", no_argument, NULL, 8},
+
 		{NULL, 0, NULL, 0}
 	};
 	int			option;			/* Command line option */
@@ -91,25 +94,11 @@ parseCommandLine(int argc, char *argv[])
 		os_info.user = pg_strdup(getenv("PGUSER"));
 	}
 
-	if (argc > 1)
-	{
-		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
-		{
-			usage();
-			exit(0);
-		}
-		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
-		{
-			puts("pg_upgrade (PostgreSQL) " PG_VERSION);
-			exit(0);
-		}
-	}
-
 	/* Allow help and version to be run as root, so do the test here. */
 	if (os_user_effective_id == 0)
 		pg_fatal("%s: cannot be run as root", os_info.progname);
 
-	while ((option = getopt_long(argc, argv, "b:B:cd:D:j:kNo:O:p:P:rs:U:v",
+	while ((option = getopt_long(argc, argv, "b:B:cd:D:j:kNo:O:p:P:rs:U:vV?",
 								 long_options, &optindex)) != -1)
 	{
 		switch (option)
@@ -200,6 +189,10 @@ parseCommandLine(int argc, char *argv[])
 				log_opts.verbose = true;
 				break;
 
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION "\n", os_info.progname);
+				exit(0);
+
 			case 1:
 				user_opts.transfer_mode = TRANSFER_MODE_CLONE;
 				break;
@@ -233,6 +226,21 @@ parseCommandLine(int argc, char *argv[])
 			case 7:
 				user_opts.transfer_mode = TRANSFER_MODE_SWAP;
 				break;
+
+			case 8:
+				usage(os_info.progname);
+				exit(0);
+
+				/* -? help or invalid option */
+			case '?':
+				if (is_help_param(argc, argv, optind))
+				{
+					usage(os_info.progname);
+					exit(0);
+				}
+				fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
+						os_info.progname);
+				exit(1);
 
 			default:
 				fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
@@ -301,11 +309,11 @@ parseCommandLine(int argc, char *argv[])
 
 
 static void
-usage(void)
+usage(const char *progname)
 {
-	printf(_("pg_upgrade upgrades a PostgreSQL cluster to a different major version.\n\n"));
+	printf(_("%s upgrades a PostgreSQL cluster to a different major version.\n\n"), progname);
 	printf(_("Usage:\n"));
-	printf(_("  pg_upgrade [OPTION]...\n\n"));
+	printf(_("  %s [OPTION]...\n\n"), progname);
 	printf(_("Options:\n"));
 	printf(_("  -b, --old-bindir=BINDIR       old cluster executable directory\n"));
 	printf(_("  -B, --new-bindir=BINDIR       new cluster executable directory (default\n"

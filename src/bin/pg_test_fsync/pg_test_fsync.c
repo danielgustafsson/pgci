@@ -21,6 +21,7 @@
 
 #include "common/logging.h"
 #include "common/pg_prng.h"
+#include "fe_utils/option_utils.h"
 #include "getopt_long.h"
 
 /*
@@ -143,11 +144,19 @@ main(int argc, char *argv[])
 }
 
 static void
+usage(const char *progname)
+{
+	printf(_("Usage: %s [-f FILENAME] [-s SECS-PER-TEST]\n"), progname);
+}
+
+static void
 handle_args(int argc, char *argv[])
 {
 	static struct option long_options[] = {
 		{"filename", required_argument, NULL, 'f'},
 		{"secs-per-test", required_argument, NULL, 's'},
+		{"version", no_argument, NULL, 'V'},
+		{"help", no_argument, NULL, 1},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -156,21 +165,7 @@ handle_args(int argc, char *argv[])
 	unsigned long optval;		/* used for option parsing */
 	char	   *endptr;
 
-	if (argc > 1)
-	{
-		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
-		{
-			printf(_("Usage: %s [-f FILENAME] [-s SECS-PER-TEST]\n"), progname);
-			exit(0);
-		}
-		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
-		{
-			puts("pg_test_fsync (PostgreSQL) " PG_VERSION);
-			exit(0);
-		}
-	}
-
-	while ((option = getopt_long(argc, argv, "f:s:",
+	while ((option = getopt_long(argc, argv, "f:s:V?",
 								 long_options, &optindex)) != -1)
 	{
 		switch (option)
@@ -196,6 +191,24 @@ handle_args(int argc, char *argv[])
 					pg_fatal("%s must be in range %u..%u",
 							 "--secs-per-test", 1, UINT_MAX);
 				break;
+
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION "\n", progname);
+				exit(0);
+
+			case 1:
+				usage(progname);
+				exit(0);
+
+				/* -? help or invalid option */
+			case '?':
+				if (is_help_param(argc, argv, optind))
+				{
+					usage(progname);
+					exit(0);
+				}
+				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
+				exit(1);
 
 			default:
 				/* getopt_long already emitted a complaint */

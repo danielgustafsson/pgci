@@ -25,6 +25,7 @@
 #include "common/connect.h"
 #include "common/logging.h"
 #include "common/string.h"
+#include "fe_utils/option_utils.h"
 #include "getopt_long.h"
 #include "libpq-fe.h"
 #include "pg_getopt.h"
@@ -446,7 +447,7 @@ main(int argc, char **argv)
 		{"version", no_argument, NULL, 'V'},
 		{"no-password", no_argument, NULL, 'w'},
 		{"password", no_argument, NULL, 'W'},
-		{"help", no_argument, NULL, '?'},
+		{"help", no_argument, NULL, 1},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -471,21 +472,7 @@ main(int argc, char **argv)
 	param.transaction_limit = 1000;
 
 	/* Process command-line arguments */
-	if (argc > 1)
-	{
-		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
-		{
-			usage(progname);
-			exit(0);
-		}
-		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
-		{
-			puts("vacuumlo (PostgreSQL) " PG_VERSION);
-			exit(0);
-		}
-	}
-
-	while ((c = getopt_long(argc, argv, "h:l:np:U:vwW", long_options, &optindex)) != -1)
+	while ((c = getopt_long(argc, argv, "h:l:np:U:vVwW?", long_options, &optindex)) != -1)
 	{
 		switch (c)
 		{
@@ -513,12 +500,27 @@ main(int argc, char **argv)
 			case 'v':
 				param.verbose = 1;
 				break;
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION "\n", progname);
+				exit(0);
 			case 'w':
 				param.pg_prompt = TRI_NO;
 				break;
 			case 'W':
 				param.pg_prompt = TRI_YES;
 				break;
+			case 1:
+				usage(progname);
+				exit(0);
+				/* -? or invalid option */
+			case '?':
+				if (is_help_param(argc, argv, optind))
+				{
+					usage(progname);
+					exit(0);
+				}
+				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
+				exit(1);
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);

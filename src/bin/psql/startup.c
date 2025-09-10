@@ -135,20 +135,6 @@ main(int argc, char *argv[])
 	pg_logging_set_locus_callback(log_locus_callback);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("psql"));
 
-	if (argc > 1)
-	{
-		if ((strcmp(argv[1], "-?") == 0) || (argc == 2 && (strcmp(argv[1], "--help") == 0)))
-		{
-			usage(NOPAGER);
-			exit(EXIT_SUCCESS);
-		}
-		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
-		{
-			showVersion();
-			exit(EXIT_SUCCESS);
-		}
-	}
-
 	pset.progname = get_progname(argv[0]);
 
 	pset.db = NULL;

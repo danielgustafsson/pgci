@@ -62,15 +62,16 @@ main(int argc, char **argv)
 		{"quiet", no_argument, NULL, 'q'},
 		{"timeout", required_argument, NULL, 't'},
 		{"username", required_argument, NULL, 'U'},
+		{"version", no_argument, NULL, 'V'},
+		{"help", no_argument, NULL, 1},
 		{NULL, 0, NULL, 0}
 	};
 
 	pg_logging_init(argv[0]);
 	progname = get_progname(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pgscripts"));
-	handle_help_version_opts(argc, argv, progname, help);
 
-	while ((c = getopt_long(argc, argv, "d:h:p:qt:U:", long_options, NULL)) != -1)
+	while ((c = getopt_long(argc, argv, "d:h:p:qt:U:V?", long_options, NULL)) != -1)
 	{
 		switch (c)
 		{
@@ -92,6 +93,16 @@ main(int argc, char **argv)
 			case 'U':
 				pguser = pg_strdup(optarg);
 				break;
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION "\n", progname);
+				exit(0);
+			case 1:
+				help(progname);
+				exit(0);
+			/* distinguish between -? and invalid option manually */
+			case '?':
+				handle_help_opt(argc, argv, optind, progname, help);
+				/* Fall through to invalid option */
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);

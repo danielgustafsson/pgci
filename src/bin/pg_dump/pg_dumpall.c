@@ -27,6 +27,7 @@
 #include "common/string.h"
 #include "connectdb.h"
 #include "dumputils.h"
+#include "fe_utils/option_utils.h"
 #include "fe_utils/string_utils.h"
 #include "filter.h"
 #include "getopt_long.h"
@@ -55,7 +56,7 @@ typedef struct
 #define SH_DEFINE
 #include "lib/simplehash.h"
 
-static void help(void);
+static void help(const char *progname);
 
 static void dropRoles(PGconn *conn);
 static void dumpRoles(PGconn *conn);
@@ -187,6 +188,8 @@ main(int argc, char *argv[])
 		{"filter", required_argument, NULL, 8},
 		{"sequence-data", no_argument, &sequence_data, 1},
 		{"restrict-key", required_argument, NULL, 9},
+		{"version", no_argument, NULL, 'V'},
+		{"help", no_argument, NULL, 10},
 
 		{NULL, 0, NULL, 0}
 	};
@@ -214,20 +217,6 @@ main(int argc, char *argv[])
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_dump"));
 	progname = get_progname(argv[0]);
 
-	if (argc > 1)
-	{
-		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
-		{
-			help();
-			exit_nicely(0);
-		}
-		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
-		{
-			puts("pg_dumpall (PostgreSQL) " PG_VERSION);
-			exit_nicely(0);
-		}
-	}
-
 	if ((ret = find_other_exec(argv[0], "pg_dump", PGDUMP_VERSIONSTR,
 							   pg_dump_bin)) < 0)
 	{
@@ -246,7 +235,7 @@ main(int argc, char *argv[])
 
 	pgdumpopts = createPQExpBuffer();
 
-	while ((c = getopt_long(argc, argv, "acd:E:f:gh:l:Op:rsS:tU:vwWx", long_options, &optindex)) != -1)
+	while ((c = getopt_long(argc, argv, "acd:E:f:gh:l:Op:rsS:tU:vVwWx?", long_options, &optindex)) != -1)
 	{
 		switch (c)
 		{
@@ -322,6 +311,10 @@ main(int argc, char *argv[])
 				appendPQExpBufferStr(pgdumpopts, " -v");
 				break;
 
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION "\n", progname);
+				exit_nicely(0);
+
 			case 'w':
 				prompt_password = TRI_NO;
 				appendPQExpBufferStr(pgdumpopts, " -w");
@@ -380,6 +373,14 @@ main(int argc, char *argv[])
 				appendShellString(pgdumpopts, optarg);
 				break;
 
+			case 10:
+				help(progname);
+				exit_nicely(0);
+
+			/* distinguish between -? and invalid option manually */
+			case '?':
+				handle_help_opt(argc, argv, optind, progname, help);
+				/* Fall through to invalid option */
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
@@ -688,7 +689,7 @@ main(int argc, char *argv[])
 
 
 static void
-help(void)
+help(const char *progname)
 {
 	printf(_("%s exports a PostgreSQL database cluster as an SQL script.\n\n"), progname);
 	printf(_("Usage:\n"));

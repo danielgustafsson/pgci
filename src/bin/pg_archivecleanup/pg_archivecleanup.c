@@ -337,7 +337,7 @@ main(int argc, char **argv)
 			default:
 				/* getopt already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
-				exit(2);
+				exit(1);
 		}
 	}
 

@@ -109,7 +109,7 @@ main(int argc, char *argv[])
 		{"wal-segsize", required_argument, NULL, 1},
 		{"char-signedness", required_argument, NULL, 2},
 		{"version", no_argument, NULL, 'V'},
-		{"help", no_argument, NULL, '?'},
+		{"help", no_argument, NULL, 3},
 		{NULL, 0, NULL, 0}
 	};
 

@@ -144,7 +144,7 @@ main(int argc, char *argv[])
 		{"copy", no_argument, NULL, 5},
 		{"copy-file-range", no_argument, NULL, 6},
 		{"version", no_argument, NULL, 'V'},
-		{"help", no_argument, NULL, '?'},
+		{"help", no_argument, NULL, 7},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -223,6 +223,9 @@ main(int argc, char *argv[])
 				break;
 			case 'V':
 				printf("%s (PostgreSQL) " PG_VERSION "\n", progname);
+				exit(0);
+			case 7:
+				help(progname);
 				exit(0);
 			case '?':
 				if (is_help_param(argc, argv, optind))

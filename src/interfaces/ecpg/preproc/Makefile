@@ -52,7 +52,7 @@ endif
 
 all: ecpg
 
-ecpg: $(OBJS) | submake-libpgport
+ecpg: $(OBJS) | submake-libpgport submake-libpgfeutils
 	$(CC) $(CFLAGS) $^ $(LDFLAGS) $(LDFLAGS_EX) $(LIBS) $(PTHREAD_LIBS) -o $@$(X)
 
 # We symlink typename.c from ecpglib and recompile it here

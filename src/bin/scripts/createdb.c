@@ -43,6 +43,8 @@ main(int argc, char *argv[])
 		{"builtin-locale", required_argument, NULL, 5},
 		{"icu-locale", required_argument, NULL, 6},
 		{"icu-rules", required_argument, NULL, 7},
+		{"version", no_argument, NULL, 'V'},
+		{"help", no_argument, NULL, 8},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -81,9 +83,7 @@ main(int argc, char *argv[])
 	progname = get_progname(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pgscripts"));
 
-	handle_help_version_opts(argc, argv, "createdb", help);
-
-	while ((c = getopt_long(argc, argv, "D:eE:h:l:O:p:S:T:U:wW", long_options, &optindex)) != -1)
+	while ((c = getopt_long(argc, argv, "D:eE:h:l:O:p:S:T:U:VwW?", long_options, &optindex)) != -1)
 	{
 		switch (c)
 		{
@@ -117,6 +117,9 @@ main(int argc, char *argv[])
 			case 'U':
 				username = pg_strdup(optarg);
 				break;
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION "\n", progname);
+				exit(0);
 			case 'w':
 				prompt_password = TRI_NO;
 				break;
@@ -144,6 +147,18 @@ main(int argc, char *argv[])
 			case 7:
 				icu_rules = pg_strdup(optarg);
 				break;
+			case 8:
+				help(progname);
+				exit(0);
+				/* -? help or invalid option */
+			case '?':
+				if (is_help_param(argc, argv, optind))
+				{
+					help(progname);
+					exit(0);
+				}
+				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
+				exit(1);
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);

@@ -16,27 +16,22 @@
 #include "common/string.h"
 #include "fe_utils/option_utils.h"
 
+
 /*
- * Provide strictly harmonized handling of --help and --version
- * options.
+ * is_help_param
+ *
+ * getopt_long returns '?' for any invalid parameters as well as for the help
+ * parameter '-?' without any way to distinguish the two cases.  This helper
+ * function can be used to inspect the current parameter in argv in order to
+ * determine which case it was.
  */
-void
-handle_help_version_opts(int argc, char *argv[],
-						 const char *fixed_progname, help_handler hlp)
+bool
+is_help_param(int argc, char *argv[], int optind)
 {
-	if (argc > 1)
-	{
-		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
-		{
-			hlp(get_progname(argv[0]));
-			exit(0);
-		}
-		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
-		{
-			printf("%s (PostgreSQL) " PG_VERSION "\n", fixed_progname);
-			exit(0);
-		}
-	}
+	if (argc > 1 && optind <= argc && strcmp(argv[optind - 1], "-?") == 0)
+		return true;
+
+	return false;
 }
 
 /*

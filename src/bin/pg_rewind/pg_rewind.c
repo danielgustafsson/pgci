@@ -121,7 +121,8 @@ int
 main(int argc, char **argv)
 {
 	static struct option long_options[] = {
-		{"help", no_argument, NULL, '?'},
+		{"help", no_argument, NULL, 7},
+		{"version", no_argument, NULL, 'V'},
 		{"target-pgdata", required_argument, NULL, 'D'},
 		{"write-recovery-conf", no_argument, NULL, 'R'},
 		{"source-pgdata", required_argument, NULL, 1},
@@ -158,22 +159,7 @@ main(int argc, char **argv)
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_rewind"));
 	progname = get_progname(argv[0]);
 
-	/* Process command-line arguments */
-	if (argc > 1)
-	{
-		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
-		{
-			usage(progname);
-			exit(0);
-		}
-		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
-		{
-			puts("pg_rewind (PostgreSQL) " PG_VERSION);
-			exit(0);
-		}
-	}
-
-	while ((c = getopt_long(argc, argv, "cD:nNPR", long_options, &option_index)) != -1)
+	while ((c = getopt_long(argc, argv, "cD:nNPRV?", long_options, &option_index)) != -1)
 	{
 		switch (c)
 		{
@@ -226,6 +212,24 @@ main(int argc, char **argv)
 				if (!parse_sync_method(optarg, &sync_method))
 					exit(1);
 				break;
+
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION "\n", progname);
+				exit(0);
+
+			case 7:
+				usage(progname);
+				exit(0);
+
+				/* -? help or invalid option */
+			case '?':
+				if (is_help_param(argc, argv, optind))
+				{
+					usage(progname);
+					exit(0);
+				}
+				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
+				exit(1);
 
 			default:
 				/* getopt_long already emitted a complaint */

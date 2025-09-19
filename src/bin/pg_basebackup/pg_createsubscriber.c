@@ -23,6 +23,7 @@
 #include "common/logging.h"
 #include "common/pg_prng.h"
 #include "common/restricted_token.h"
+#include "fe_utils/option_utils.h"
 #include "fe_utils/recovery_gen.h"
 #include "fe_utils/simple_list.h"
 #include "fe_utils/string_utils.h"
@@ -76,7 +77,7 @@ struct LogicalRepInfos
 };
 
 static void cleanup_objects_atexit(void);
-static void usage();
+static void usage(const char *progname);
 static char *get_base_conninfo(const char *conninfo, char **dbname);
 static char *get_sub_conninfo(const struct CreateSubscriberOptions *opt);
 static char *get_exec_path(const char *argv0, const char *progname);
@@ -239,7 +240,7 @@ cleanup_objects_atexit(void)
 }
 
 static void
-usage(void)
+usage(const char *progname)
 {
 	printf(_("%s creates a new logical replica from a standby server.\n\n"),
 		   progname);
@@ -2041,7 +2042,7 @@ main(int argc, char **argv)
 		{"subscriber-username", required_argument, NULL, 'U'},
 		{"verbose", no_argument, NULL, 'v'},
 		{"version", no_argument, NULL, 'V'},
-		{"help", no_argument, NULL, '?'},
+		{"help", no_argument, NULL, 6},
 		{"config-file", required_argument, NULL, 1},
 		{"publication", required_argument, NULL, 2},
 		{"replication-slot", required_argument, NULL, 3},
@@ -2071,21 +2072,6 @@ main(int argc, char **argv)
 	pg_logging_set_level(PG_LOG_WARNING);
 	progname = get_progname(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_basebackup"));
-
-	if (argc > 1)
-	{
-		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
-		{
-			usage();
-			exit(0);
-		}
-		else if (strcmp(argv[1], "-V") == 0
-				 || strcmp(argv[1], "--version") == 0)
-		{
-			puts("pg_createsubscriber (PostgreSQL) " PG_VERSION);
-			exit(0);
-		}
-	}
 
 	/* Default settings */
 	subscriber_dir = NULL;
@@ -2118,7 +2104,7 @@ main(int argc, char **argv)
 
 	get_restricted_token();
 
-	while ((c = getopt_long(argc, argv, "ad:D:np:P:s:t:TU:v",
+	while ((c = getopt_long(argc, argv, "ad:D:np:P:s:t:TU:vV?",
 							long_options, &option_index)) != -1)
 	{
 		switch (c)
@@ -2164,6 +2150,9 @@ main(int argc, char **argv)
 			case 'v':
 				pg_logging_increase_verbosity();
 				break;
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION "\n", progname);
+				exit(0);
 			case 1:
 				opt.config_file = pg_strdup(optarg);
 				break;
@@ -2200,6 +2189,18 @@ main(int argc, char **argv)
 				else
 					pg_fatal("object type \"%s\" specified more than once for --clean", optarg);
 				break;
+			case 6:
+				usage(progname);
+				exit(0);
+				/* -? help or invalid option */
+			case '?':
+				if (is_help_param(argc, argv, optind))
+				{
+					usage(progname);
+					exit(0);
+				}
+				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
+				exit(1);
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);

@@ -143,6 +143,8 @@ main(int argc, char *argv[])
 		{"clone", no_argument, NULL, 4},
 		{"copy", no_argument, NULL, 5},
 		{"copy-file-range", no_argument, NULL, 6},
+		{"version", no_argument, NULL, 'V'},
+		{"help", no_argument, NULL, 7},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -166,7 +168,6 @@ main(int argc, char *argv[])
 	pg_logging_init(argv[0]);
 	progname = get_progname(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_combinebackup"));
-	handle_help_version_opts(argc, argv, progname, help);
 
 	memset(&opt, 0, sizeof(opt));
 	opt.manifest_checksums = CHECKSUM_TYPE_CRC32C;
@@ -174,7 +175,7 @@ main(int argc, char *argv[])
 	opt.copy_method = COPY_METHOD_COPY;
 
 	/* process command-line options */
-	while ((c = getopt_long(argc, argv, "dknNo:T:",
+	while ((c = getopt_long(argc, argv, "dknNo:T:V?",
 							long_options, &optindex)) != -1)
 	{
 		switch (c)
@@ -220,6 +221,20 @@ main(int argc, char *argv[])
 			case 6:
 				opt.copy_method = COPY_METHOD_COPY_FILE_RANGE;
 				break;
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION "\n", progname);
+				exit(0);
+			case 7:
+				help(progname);
+				exit(0);
+			case '?':
+				if (is_help_param(argc, argv, optind))
+				{
+					help(progname);
+					exit(0);
+				}
+				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
+				exit(1);
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);

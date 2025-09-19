@@ -56,7 +56,7 @@ static pg_compress_algorithm compression_algorithm = PG_COMPRESSION_NONE;
 static XLogRecPtr endpos = InvalidXLogRecPtr;
 
 
-static void usage(void);
+static void usage(const char *progname);
 static DIR *get_destination_dir(char *dest_folder);
 static void close_destination_dir(DIR *dest_dir, char *dest_folder);
 static XLogRecPtr FindStreamingStart(uint32 *tli);
@@ -72,7 +72,7 @@ disconnect_atexit(void)
 }
 
 static void
-usage(void)
+usage(const char *progname)
 {
 	printf(_("%s receives PostgreSQL streaming write-ahead logs.\n\n"),
 		   progname);
@@ -624,7 +624,7 @@ int
 main(int argc, char **argv)
 {
 	static struct option long_options[] = {
-		{"help", no_argument, NULL, '?'},
+		{"help", no_argument, NULL, 6},
 		{"version", no_argument, NULL, 'V'},
 		{"directory", required_argument, NULL, 'D'},
 		{"dbname", required_argument, NULL, 'd'},
@@ -662,22 +662,7 @@ main(int argc, char **argv)
 	progname = get_progname(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_basebackup"));
 
-	if (argc > 1)
-	{
-		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
-		{
-			usage();
-			exit(0);
-		}
-		else if (strcmp(argv[1], "-V") == 0 ||
-				 strcmp(argv[1], "--version") == 0)
-		{
-			puts("pg_receivewal (PostgreSQL) " PG_VERSION);
-			exit(0);
-		}
-	}
-
-	while ((c = getopt_long(argc, argv, "d:D:E:h:np:s:S:U:vwWZ:",
+	while ((c = getopt_long(argc, argv, "d:D:E:h:np:s:S:U:vVwWZ:?",
 							long_options, &option_index)) != -1)
 	{
 		switch (c)
@@ -718,6 +703,9 @@ main(int argc, char **argv)
 			case 'v':
 				verbose++;
 				break;
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION "\n", progname);
+				exit(0);
 			case 'w':
 				dbgetpassword = -1;
 				break;
@@ -743,6 +731,18 @@ main(int argc, char **argv)
 			case 5:
 				do_sync = false;
 				break;
+			case 6:
+				usage(progname);
+				exit(0);
+				/* -? help or invalid option */
+			case '?':
+				if (is_help_param(argc, argv, optind))
+				{
+					usage(progname);
+					exit(0);
+				}
+				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
+				exit(1);
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);

@@ -7,6 +7,9 @@ subdir = src/bin/pg_archivecleanup
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
+# We need libpq only because fe_utils does.
+LDFLAGS_INTERNAL += -L$(top_builddir)/src/fe_utils -lpgfeutils $(libpq_pgport) $(ICU_LIBS)
+
 OBJS = \
 	$(WIN32RES) \
 	pg_archivecleanup.o

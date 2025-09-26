@@ -26,6 +26,7 @@
 #include "catalog/pg_control.h"
 #include "common/controldata_utils.h"
 #include "common/logging.h"
+#include "fe_utils/option_utils.h"
 #include "getopt_long.h"
 #include "pg_getopt.h"
 
@@ -90,6 +91,8 @@ main(int argc, char *argv[])
 {
 	static struct option long_options[] = {
 		{"pgdata", required_argument, NULL, 'D'},
+		{"version", no_argument, NULL, 'V'},
+		{"help", no_argument, NULL, 1},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -112,28 +115,29 @@ main(int argc, char *argv[])
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_controldata"));
 	progname = get_progname(argv[0]);
 
-	if (argc > 1)
-	{
-		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
-		{
-			usage(progname);
-			exit(0);
-		}
-		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
-		{
-			puts("pg_controldata (PostgreSQL) " PG_VERSION);
-			exit(0);
-		}
-	}
-
-	while ((c = getopt_long(argc, argv, "D:", long_options, NULL)) != -1)
+	while ((c = getopt_long(argc, argv, "D:V?", long_options, NULL)) != -1)
 	{
 		switch (c)
 		{
 			case 'D':
 				DataDir = optarg;
 				break;
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION "\n", progname);
+				exit(0);
+			case 1:
+				usage(progname);
+				exit(0);
 
+				/* -? or invalid option */
+			case '?':
+				if (is_help_param(argc, argv, optind))
+				{
+					usage(progname);
+					exit(0);
+				}
+				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
+				exit(1);
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);

@@ -894,7 +894,7 @@ pg_time_now_lazy(pg_time_usec_t *now)
 #define PG_TIME_GET_DOUBLE(t) (0.000001 * (t))
 
 static void
-usage(void)
+usage(const char *progname)
 {
 	printf("%s is a benchmarking tool for PostgreSQL.\n\n"
 		   "Usage:\n"
@@ -6718,6 +6718,8 @@ main(int argc, char **argv)
 		{"verbose-errors", no_argument, NULL, 15},
 		{"exit-on-abort", no_argument, NULL, 16},
 		{"debug", no_argument, NULL, 17},
+		{"version", no_argument, NULL, 'V'},
+		{"help", no_argument, NULL, 18},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -6769,27 +6771,13 @@ main(int argc, char **argv)
 	pg_logging_init(argv[0]);
 	progname = get_progname(argv[0]);
 
-	if (argc > 1)
-	{
-		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
-		{
-			usage();
-			exit(0);
-		}
-		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
-		{
-			puts("pgbench (PostgreSQL) " PG_VERSION);
-			exit(0);
-		}
-	}
-
 	state = (CState *) pg_malloc0(sizeof(CState));
 
 	/* set random seed early, because it may be used while parsing scripts. */
 	if (!set_random_seed(getenv("PGBENCH_RANDOM_SEED")))
 		pg_fatal("error while setting random seed from PGBENCH_RANDOM_SEED environment variable");
 
-	while ((c = getopt_long(argc, argv, "b:c:Cd:D:f:F:h:iI:j:lL:M:nNp:P:qrR:s:St:T:U:v", long_options, &optindex)) != -1)
+	while ((c = getopt_long(argc, argv, "b:c:Cd:D:f:F:h:iI:j:lL:M:nNp:P:qrR:s:St:T:U:vV?", long_options, &optindex)) != -1)
 	{
 		char	   *script;
 
@@ -6980,6 +6968,9 @@ main(int argc, char **argv)
 				benchmarking_option_set = true;
 				do_vacuum_accounts = true;
 				break;
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION "\n", progname);
+				exit(0);
 			case 1:				/* unlogged-tables */
 				initialization_option_set = true;
 				unlogged_tables = true;
@@ -7071,6 +7062,18 @@ main(int argc, char **argv)
 			case 17:			/* debug */
 				pg_logging_increase_verbosity();
 				break;
+			case 18:
+				usage(progname);
+				exit(0);
+				/* -? or invalid option */
+			case '?':
+				if (is_help_param(argc, argv, optind))
+				{
+					usage(progname);
+					exit(0);
+				}
+				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
+				exit(1);
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);

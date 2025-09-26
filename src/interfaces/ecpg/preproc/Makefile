@@ -44,6 +44,9 @@ TOOLSDIR = $(top_srcdir)/src/tools
 GEN_KEYWORDLIST = $(PERL) -I $(TOOLSDIR) $(TOOLSDIR)/gen_keywordlist.pl
 GEN_KEYWORDLIST_DEPS = $(TOOLSDIR)/gen_keywordlist.pl $(TOOLSDIR)/PerfectHash.pm
 
+# We need libpq only because fe_utils does.
+LDFLAGS_INTERNAL += -L$(top_builddir)/src/fe_utils -lpgfeutils $(libpq_pgport) $(ICU_LIBS)
+
 # Suppress parallel build to avoid a bug in GNU make 3.82
 # (see comments in ../Makefile)
 ifeq ($(MAKE_VERSION),3.82)
@@ -52,7 +55,7 @@ endif
 
 all: ecpg
 
-ecpg: $(OBJS) | submake-libpgport
+ecpg: $(OBJS) | submake-libpgport submake-libpgfeutils
 	$(CC) $(CFLAGS) $^ $(LDFLAGS) $(LDFLAGS_EX) $(LIBS) $(PTHREAD_LIBS) -o $@$(X)
 
 # We symlink typename.c from ecpglib and recompile it here

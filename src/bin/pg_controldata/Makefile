@@ -15,13 +15,16 @@ subdir = src/bin/pg_controldata
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
+# We need libpq only because fe_utils does.
+LDFLAGS_INTERNAL += -L$(top_builddir)/src/fe_utils -lpgfeutils $(libpq_pgport) $(ICU_LIBS)
+
 OBJS = \
 	$(WIN32RES) \
 	pg_controldata.o
 
 all: pg_controldata
 
-pg_controldata: $(OBJS) | submake-libpgport
+pg_controldata: $(OBJS) | submake-libpgport submake-libpgfeutils
 	$(CC) $(CFLAGS) $^ $(LDFLAGS) $(LDFLAGS_EX) $(LIBS) -o $@$(X)
 
 install: all installdirs

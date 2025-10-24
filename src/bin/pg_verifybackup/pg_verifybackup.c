@@ -100,9 +100,7 @@ static astreamer *create_archive_verifier(verifier_context *context,
 										  pg_compress_algorithm compress_algo);
 
 static void progress_report(bool finished);
-static void usage(void);
-
-static const char *progname;
+static void usage(const char *progname);
 
 /* is progress reporting enabled? */
 static bool show_progress = false;
@@ -127,6 +125,8 @@ main(int argc, char **argv)
 		{"quiet", no_argument, NULL, 'q'},
 		{"skip-checksums", no_argument, NULL, 's'},
 		{"wal-directory", required_argument, NULL, 'w'},
+		{"version", no_argument, NULL, 'V'},
+		{"help", no_argument, NULL, 1},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -138,26 +138,13 @@ main(int argc, char **argv)
 	char	   *wal_directory = NULL;
 	char	   *pg_waldump_path = NULL;
 	DIR		   *dir;
+	const char *progname;
 
 	pg_logging_init(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_verifybackup"));
 	progname = get_progname(argv[0]);
 
 	memset(&context, 0, sizeof(context));
-
-	if (argc > 1)
-	{
-		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
-		{
-			usage();
-			exit(0);
-		}
-		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
-		{
-			puts("pg_verifybackup (PostgreSQL) " PG_VERSION);
-			exit(0);
-		}
-	}
 
 	/*
 	 * Skip certain files in the toplevel directory.
@@ -180,7 +167,7 @@ main(int argc, char **argv)
 	simple_string_list_append(&context.ignore_list, "recovery.signal");
 	simple_string_list_append(&context.ignore_list, "standby.signal");
 
-	while ((c = getopt_long(argc, argv, "eF:i:m:nPqsw:", long_options, NULL)) != -1)
+	while ((c = getopt_long(argc, argv, "eF:i:m:nPqsVw:?", long_options, NULL)) != -1)
 	{
 		switch (c)
 		{
@@ -220,10 +207,25 @@ main(int argc, char **argv)
 			case 's':
 				context.skip_checksums = true;
 				break;
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION "\n", progname);
+				exit(0);
 			case 'w':
 				wal_directory = pstrdup(optarg);
 				canonicalize_path(wal_directory);
 				break;
+			case 1:
+				usage(progname);
+				exit(0);
+				/* -? help or invalid option */
+			case '?':
+				if (is_help_param(argc, argv, optind))
+				{
+					usage(progname);
+					exit(0);
+				}
+				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
+				exit(1);
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
@@ -1363,7 +1365,7 @@ progress_report(bool finished)
  * Print out usage information and exit.
  */
 static void
-usage(void)
+usage(const char *progname)
 {
 	printf(_("%s verifies a backup against the backup manifest.\n\n"), progname);
 	printf(_("Usage:\n  %s [OPTION]... BACKUPDIR\n\n"), progname);

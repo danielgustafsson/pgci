@@ -71,7 +71,7 @@ static bool output_needs_fsync = false;
 static XLogRecPtr output_written_lsn = InvalidXLogRecPtr;
 static XLogRecPtr output_fsync_lsn = InvalidXLogRecPtr;
 
-static void usage(void);
+static void usage(const char *progname);
 static void StreamLogicalLog(void);
 static bool flushAndSendFeedback(PGconn *conn, TimestampTz *now);
 static void prepareToTerminate(PGconn *conn, XLogRecPtr endpos,
@@ -79,7 +79,7 @@ static void prepareToTerminate(PGconn *conn, XLogRecPtr endpos,
 							   XLogRecPtr lsn);
 
 static void
-usage(void)
+usage(const char *progname)
 {
 	printf(_("%s controls PostgreSQL logical decoding streams.\n\n"),
 		   progname);
@@ -705,7 +705,7 @@ main(int argc, char **argv)
 		{"two-phase", no_argument, NULL, 't'},	/* deprecated */
 		{"verbose", no_argument, NULL, 'v'},
 		{"version", no_argument, NULL, 'V'},
-		{"help", no_argument, NULL, '?'},
+		{"help", no_argument, NULL, 6},
 /* connection options */
 		{"dbname", required_argument, NULL, 'd'},
 		{"host", required_argument, NULL, 'h'},
@@ -737,22 +737,7 @@ main(int argc, char **argv)
 	progname = get_progname(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_basebackup"));
 
-	if (argc > 1)
-	{
-		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
-		{
-			usage();
-			exit(0);
-		}
-		else if (strcmp(argv[1], "-V") == 0 ||
-				 strcmp(argv[1], "--version") == 0)
-		{
-			puts("pg_recvlogical (PostgreSQL) " PG_VERSION);
-			exit(0);
-		}
-	}
-
-	while ((c = getopt_long(argc, argv, "E:f:F:ntvd:h:p:U:wWI:o:P:s:S:",
+	while ((c = getopt_long(argc, argv, "E:f:F:ntvd:h:p:U:VwWI:o:P:s:S:?",
 							long_options, &option_index)) != -1)
 	{
 		switch (c)
@@ -857,6 +842,21 @@ main(int argc, char **argv)
 				slot_exists_ok = true;
 				break;
 
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION "\n", progname);
+				exit(0);
+			case 6:
+				usage(progname);
+				exit(0);
+				/* -? help or invalid option */
+			case '?':
+				if (is_help_param(argc, argv, optind))
+				{
+					usage(progname);
+					exit(0);
+				}
+				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
+				exit(1);
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);

@@ -18,7 +18,6 @@
 #include "common/blkreftable.h"
 #include "common/int.h"
 #include "common/logging.h"
-#include "fe_utils/option_utils.h"
 #include "getopt_long.h"
 
 typedef struct ws_options
@@ -54,6 +53,8 @@ main(int argc, char *argv[])
 	static struct option long_options[] = {
 		{"individual", no_argument, NULL, 'i'},
 		{"quiet", no_argument, NULL, 'q'},
+		{"version", no_argument, NULL, 'V'},
+		{"help", no_argument, NULL, 1},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -67,10 +68,9 @@ main(int argc, char *argv[])
 	pg_logging_init(argv[0]);
 	progname = get_progname(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_walsummary"));
-	handle_help_version_opts(argc, argv, progname, help);
 
 	/* process command-line options */
-	while ((c = getopt_long(argc, argv, "iq",
+	while ((c = getopt_long(argc, argv, "iqV?",
 							long_options, &optindex)) != -1)
 	{
 		switch (c)
@@ -81,6 +81,21 @@ main(int argc, char *argv[])
 			case 'q':
 				opt.quiet = true;
 				break;
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION "\n", progname);
+				exit(0);
+			case 1:
+				help(progname);
+				exit(0);
+				/* -? or invalid option */
+			case '?':
+				if (is_help_param(argc, argv, optind))
+				{
+					help(progname);
+					exit(0);
+				}
+				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
+				exit(1);
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);

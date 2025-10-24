@@ -562,4 +562,7 @@ extern int	wait_result_to_exit_code(int exit_status);
 #define HAVE_SYMLINK 1
 #endif
 
+/* port/pg_option_utils.c */
+extern bool is_help_param(int argc, char *argv[], int optind);
+
 #endif							/* PG_PORT_H */

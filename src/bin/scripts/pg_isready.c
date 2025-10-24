@@ -12,7 +12,6 @@
 #include "postgres_fe.h"
 #include "common.h"
 #include "common/logging.h"
-#include "fe_utils/option_utils.h"
 
 #define DEFAULT_CONNECT_TIMEOUT "3"
 
@@ -62,15 +61,16 @@ main(int argc, char **argv)
 		{"quiet", no_argument, NULL, 'q'},
 		{"timeout", required_argument, NULL, 't'},
 		{"username", required_argument, NULL, 'U'},
+		{"version", no_argument, NULL, 'V'},
+		{"help", no_argument, NULL, 1},
 		{NULL, 0, NULL, 0}
 	};
 
 	pg_logging_init(argv[0]);
 	progname = get_progname(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pgscripts"));
-	handle_help_version_opts(argc, argv, progname, help);
 
-	while ((c = getopt_long(argc, argv, "d:h:p:qt:U:", long_options, NULL)) != -1)
+	while ((c = getopt_long(argc, argv, "d:h:p:qt:U:V?", long_options, NULL)) != -1)
 	{
 		switch (c)
 		{
@@ -92,6 +92,21 @@ main(int argc, char **argv)
 			case 'U':
 				pguser = pg_strdup(optarg);
 				break;
+			case 'V':
+				printf("%s (PostgreSQL) " PG_VERSION "\n", progname);
+				exit(0);
+			case 1:
+				help(progname);
+				exit(0);
+				/* -? help or invalid option */
+			case '?':
+				if (is_help_param(argc, argv, optind))
+				{
+					help(progname);
+					exit(0);
+				}
+				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
+				exit(PQPING_NO_ATTEMPT);
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);

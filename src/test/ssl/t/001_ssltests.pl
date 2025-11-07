@@ -125,7 +125,7 @@ if ($windows_os)
 	$node->connect_fails(
 		"$common_connstr sslrootcert=ssl/root+server_ca.crt sslmode=require",
 		"connect with correct server CA cert file sslmode=require",
-		expected_stderr => qr/\Qthe expected err\E/);
+		expected_stderr => qr/\Qserver does not support SSL\E/);
 }
 else
 {

@@ -164,7 +164,7 @@ $node->reload();
 $log_start =
   $node->wait_for_log(qr/reloading configuration files/, $log_start);
 $node->log_check(
-	"passhprase could reload private key",
+	"passphrase could reload private key",
 	$log_start,
 	log_unlike => [ qr/cannot be reloaded because it requires a passphrase/, ]
 );

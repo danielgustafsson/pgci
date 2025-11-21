@@ -123,13 +123,12 @@ $result = $node->restart(
 	log_unlike => qr/could not load private key file/);
 is($result, 1, 'restart succeeds with password-protected key file');
 
-diag 'XXX: $exec_backend: ' . $exec_backend;
 if ($exec_backend =~ /on/)
 {
 	$node->connect_fails(
 		"$common_connstr sslrootcert=ssl/root+server_ca.crt sslmode=require",
 		"connect with correct server CA cert file sslmode=require",
-		expected_stderr => qr/\Qthe expected err\E/);
+		expected_stderr => qr/\Qserver does not support SSL\E/);
 }
 else
 {

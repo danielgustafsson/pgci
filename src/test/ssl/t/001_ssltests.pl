@@ -123,7 +123,7 @@ $result = $node->restart(
 	log_unlike => qr/could not load private key file/);
 is($result, 1, 'restart succeeds with password-protected key file');
 
-if ($exec_backend eq 'true')
+if ($exec_backend eq 'True')
 {
 	$node->connect_fails(
 		"$common_connstr sslrootcert=ssl/root+server_ca.crt sslmode=require",

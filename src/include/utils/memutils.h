@@ -19,7 +19,6 @@
 
 #include "nodes/memnodes.h"
 
-
 /*
  * MaxAllocSize, MaxAllocHugeSize
  *		Quasi-arbitrary limits on size of allocations.
@@ -319,4 +318,11 @@ pg_memory_is_all_zeros(const void *ptr, size_t len)
 	return true;
 }
 
+extern void ProcessGetMemoryContextInterrupt(void);
+extern void HandleGetMemoryContextInterrupt(void);
+extern void MemoryContextKeysShmemInit(void);
+extern Size MemoryContextKeysShmemSize(void);
+extern void MemoryContextStatsCounter(MemoryContext context, MemoryContextCounters *totals,
+									  int *num_contexts);
+extern void AtProcExit_memstats_cleanup(int code, Datum arg);
 #endif							/* MEMUTILS_H */

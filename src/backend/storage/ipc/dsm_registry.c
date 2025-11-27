@@ -270,7 +270,9 @@ GetNamedDSMSegment(const char *name, size_t size,
  * This routine returns a pointer to the DSA.  A new LWLock tranche ID will be
  * generated if needed.  Note that the lock tranche will be registered with the
  * provided name.  Also note that this should be called at most once for a
- * given DSA in each backend.
+ * given DSA in each backend. It's best to minimize the number of errors thrown
+ * in this function since it's called from a CFI function. An error here could
+ * lead to error in any transaction that calls the CFI function.
  */
 dsa_area *
 GetNamedDSA(const char *name, bool *found)
@@ -351,7 +353,9 @@ GetNamedDSA(const char *name, bool *found)
  * params is ignored; a new LWLock tranche ID will be generated if needed.
  * Note that the lock tranche will be registered with the provided name.  Also
  * note that this should be called at most once for a given table in each
- * backend.
+ * backend. It's best to minimize the number of errors thrown in this function
+ * since it's called from a CFI function. An error here could lead to error in
+ * any transaction that calls the CFI function.
  */
 dshash_table *
 GetNamedDSHash(const char *name, const dshash_parameters *params, bool *found)

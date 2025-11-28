@@ -100,7 +100,7 @@ sub new
 	  "Forbidden caller of constructor: package: $package, file: $file:$line"
 	  unless $package->isa('PostgreSQL::Test::Cluster');
 
-	$psql->{timeout} = IPC::Run::timeout(
+	$psql->{timeout} = IPC::Run::timer(
 		defined($timeout)
 		? $timeout
 		: $PostgreSQL::Test::Utils::timeout_default);
@@ -179,8 +179,10 @@ sub wait_connect
 
 =item $session->quit
 
-Close the session and clean up resources. Each test run must be closed with
-C<quit>.
+Close the psql session and clean up resources.  Each psql session must be
+closed with C<quit> before the end of the test.  Returns TRUE if psql exited
+successfully (i.e. with zero exit code), otherwise returns FALSE and reports
+a test failure.
 
 =cut
 
@@ -190,7 +192,9 @@ sub quit
 
 	$self->{stdin} .= "\\q\n";
 
-	return $self->{run}->finish;
+	my $ret = $self->{run}->finish;
+	ok($ret, 'Terminating interactive psql session');
+	return $ret;
 }
 
 =pod
@@ -274,7 +278,9 @@ sub query
 		$self->{run}, $self->{timeout},
 		\$self->{stderr}, qr/$banner_match/);
 
-	die "psql query timed out" if $self->{timeout}->is_expired;
+	ok(! $self->{timeout}->is_expired, 'psql query timed out');
+	return undef if $self->{timeout}->is_expired;
+	$output = $self->{stdout};
 
 	note "results query $query_cnt:\n",
 	  explain {
@@ -342,7 +348,8 @@ sub query_until
 
 	pump_until($self->{run}, $self->{timeout}, \$self->{stdout}, $until);
 
-	die "psql query timed out" if $self->{timeout}->is_expired;
+	ok(! $self->{timeout}->is_expired, 'psql query_until did not time out');
+	return undef if $self->{timeout}->is_expired;
 
 	$ret = $self->{stdout};
 

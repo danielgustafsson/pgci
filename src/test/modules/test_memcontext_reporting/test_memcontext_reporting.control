@@ -1,0 +1,4 @@
+comment = 'Test code for memcontext reporting'
+default_version = '1.0'
+module_pathname = '$libdir/test_memcontext_reporting'
+relocatable = true

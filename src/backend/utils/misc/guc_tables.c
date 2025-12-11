@@ -556,6 +556,7 @@ char	   *cluster_name = "";
 char	   *ConfigFileName;
 char	   *HbaFileName;
 char	   *IdentFileName;
+char	   *HostsFileName;
 char	   *external_pid_file;
 
 char	   *application_name;

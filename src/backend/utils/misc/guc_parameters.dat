@@ -1176,6 +1176,13 @@
   boot_val => 'NULL',
 },
 
+{ name => 'hosts_file', type => 'string', context => 'PGC_POSTMASTER', group => 'FILE_LOCATIONS',
+  short_desc => 'Sets the server\'s "hosts" configuration file.',
+  flags => 'GUC_SUPERUSER_ONLY',
+  variable => 'HostsFileName',
+  boot_val => 'NULL',
+},
+
 { name => 'hot_standby', type => 'bool', context => 'PGC_POSTMASTER', group => 'REPLICATION_STANDBY',
   short_desc => 'Allows connections and queries during recovery.',
   variable => 'EnableHotStandby',

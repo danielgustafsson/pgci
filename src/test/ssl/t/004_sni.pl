@@ -66,8 +66,19 @@ $node->connect_fails(
 	"pg.conf: connect fails without intermediate for sslmode=verify-ca",
 	expected_stderr => qr/certificate verify failed/);
 
-# Remove pg_hosts.conf and reload to make sure a missing file is treated like
-# an empty file.
+# Add an entry in pg_hosts.conf with no default, and reload. Since ssl_sni is
+# still 'off' we should still be able to connect using the certificates in
+# postgresql.conf
+$node->append_conf('pg_hosts.conf',
+	"example.org server-cn-only.crt server-cn-only.key");
+$node->reload;
+$node->connect_ok(
+	"$connstr sslrootcert=ssl/root+server_ca.crt sslmode=require",
+	"pg.conf: connect with correct server CA cert file sslmode=require");
+
+# Turn on SNI support and remove pg_hosts.conf and reload to make sure a
+# missing file is treated like an empty file.
+$node->append_conf('postgresql.conf', 'ssl_sni = on');
 ok(unlink($node->data_dir . '/pg_hosts.conf'));
 $node->reload;
 
@@ -107,6 +118,10 @@ $node->connect_ok(
 	"$connstr host=example.org sslrootcert=ssl/root_ca.crt sslmode=verify-ca",
 	"pg_hosts.conf: connect to example.org and verify server CA");
 
+$node->connect_ok(
+	"$connstr host=Example.ORG sslrootcert=ssl/root_ca.crt sslmode=verify-ca",
+	"pg_hosts.conf: connect to Example.ORG and verify server CA");
+
 $node->connect_fails(
 	"$connstr host=example.org sslrootcert=invalid sslmode=verify-ca",
 	"pg_hosts.conf: connect to example.org but without server root cert, sslmode=verify-ca",
@@ -121,19 +136,50 @@ $node->connect_ok(
 	"$connstr sslrootcert=ssl/root+server_ca.crt sslmode=require",
 	"pg_hosts.conf: connect to default with sslmode=require");
 
+# Use multiple hostnames for a single configuration
+ok(unlink($node->data_dir . '/pg_hosts.conf'));
+$node->append_conf('pg_hosts.conf',
+	"example.org,example.com,example.net server-cn-only+server_ca.crt server-cn-only.key root_ca.crt"
+);
+$node->reload;
+
+$node->connect_ok(
+	"$connstr host=example.org sslrootcert=ssl/root_ca.crt sslmode=verify-ca",
+	"pg_hosts.conf: connect to example.org and verify server CA");
+$node->connect_ok(
+	"$connstr host=example.com sslrootcert=ssl/root_ca.crt sslmode=verify-ca",
+	"pg_hosts.conf: connect to example.com and verify server CA");
+$node->connect_ok(
+	"$connstr host=example.net sslrootcert=ssl/root_ca.crt sslmode=verify-ca",
+	"pg_hosts.conf: connect to example.net and verify server CA");
+$node->connect_fails(
+	"$connstr sslrootcert=ssl/root+server_ca.crt sslmode=require host=example.se",
+	"pg_hosts.conf: connect to default with sslmode=require",
+	expected_stderr => qr/unrecognized name/);
+
+# Add an incorrect entry specifying a default entry combined with hostnames
+ok(unlink($node->data_dir . '/pg_hosts.conf'));
+$node->append_conf('pg_hosts.conf',
+	"example.org,*,example.net server-cn-only+server_ca.crt server-cn-only.key root_ca.crt"
+);
+my $result = $node->restart(fail_ok => 1);
+is($result, 0,
+	'pg_hosts.conf: restart fails with default entry combined with hostnames'
+);
+
 # Modify pg_hosts.conf to no longer have the default host entry.
 ok(unlink($node->data_dir . '/pg_hosts.conf'));
 $node->append_conf('pg_hosts.conf',
 	"example.org server-cn-only+server_ca.crt server-cn-only.key root_ca.crt"
 );
-$node->reload;
+$node->restart;
 
 # Connecting without a hostname as well as with a hostname which isn't in the
 # pg_hosts configuration should fail.
 $node->connect_fails(
 	"$connstr sslrootcert=ssl/root+server_ca.crt sslmode=require sslsni=0",
 	"pg_hosts.conf: connect to default with sslmode=require",
-	expected_stderr => qr/missing extension/);
+	expected_stderr => qr/handshake failure/);
 $node->connect_fails(
 	"$connstr sslrootcert=ssl/root+server_ca.crt sslmode=require host=example.com",
 	"pg_hosts.conf: connect to default with sslmode=require",
@@ -145,7 +191,7 @@ ok(unlink($node->data_dir . '/pg_hosts.conf'));
 $node->append_conf('pg_hosts.conf',
 	'localhost server-cn-only.crt server-password.key root+client_ca.crt "echo wrongpassword" on'
 );
-my $result = $node->restart(fail_ok => 1);
+$result = $node->restart(fail_ok => 1);
 is($result, 0,
 	'pg_hosts.conf: restart fails with password-protected key when using the wrong passphrase command'
 );
@@ -179,16 +225,21 @@ $node->connect_ok(
 );
 
 # Test reloading a passphrase protected key without reloading support in the
-# passphrase hook. Connecting after restart should succeed but not after the
-# following reload.
+# passphrase hook. Restarting should not give any errors in the log, but the
+# subsequent reload should fail with an error regarding reloading.
 ok(unlink($node->data_dir . '/pg_hosts.conf'));
 $node->append_conf('pg_hosts.conf',
 	'localhost server-cn-only.crt server-password.key root+client_ca.crt "echo secret1" off'
 );
+my $node_loglocation = -s $node->logfile;
 $result = $node->restart(fail_ok => 1);
 is($result, 1,
 	'pg_hosts.conf: restart succeeds with password-protected key when using the correct passphrase command'
 );
+my $log = PostgreSQL::Test::Utils::slurp_file($node->logfile, $node_loglocation);
+unlike($log, qr/cannot be reloaded because it requires a passphrase/,
+	 'log reload failure due to passphrase command reloading');
+
 SKIP:
 {
 	# Passphrase reloads must be enabled on Windows to succeed even without a
@@ -199,19 +250,26 @@ SKIP:
 		"$connstr sslrootcert=ssl/root+server_ca.crt sslmode=require host=localhost",
 		"pg_hosts.conf: connect with correct server CA cert file sslmode=require"
 	);
+	# Reloading should fail since the passphrase cannot be reloaded, with an
+	# error recorded in the log.  Since we keep existing contexts around it
+	# should still work.
+	$node_loglocation = -s $node->logfile;
+	$node->reload;
+	$node->connect_ok(
+		"$connstr sslrootcert=ssl/root+server_ca.crt sslmode=require host=localhost",
+		"pg_hosts.conf: connect with correct server CA cert file sslmode=require"
+	);
+	$log = PostgreSQL::Test::Utils::slurp_file($node->logfile, $node_loglocation);
+	like($log,
+		 qr/cannot be reloaded because it requires a passphrase/,
+		 'log reload failure due to passphrase command reloading');
 }
-
-$node->reload;
-$node->connect_fails(
-	"$connstr sslrootcert=ssl/root+server_ca.crt sslmode=require host=localhost",
-	"pg_hosts.conf: connect fails since the passphrase protected key cannot be reloaded"
-);
 
 # Configure with only non-SNI connections allowed
 ok(unlink($node->data_dir . '/pg_hosts.conf'));
 $node->append_conf('pg_hosts.conf',
-	"no_sni server-cn-only.crt server-cn-only.key");
-$node->reload;
+	"/no_sni/ server-cn-only.crt server-cn-only.key");
+$node->restart;
 
 $node->connect_ok(
 	"$connstr sslrootcert=ssl/root+server_ca.crt sslmode=require sslsni=0",
@@ -222,68 +280,54 @@ $node->connect_fails(
 	"pg_hosts.conf: only non-SNI connections allowed, connecting with SNI",
 	expected_stderr => qr/unrecognized name/);
 
-# Test client CAs by connecting to hosts in pg_hosts.conf while at the same
-# time swapping out default contexts containing different CA configurations.
+# Test client CAs
 
 # pg_hosts configuration
 ok(unlink($node->data_dir . '/pg_hosts.conf'));
 # example.org has an unconfigured CA.
 $node->append_conf('pg_hosts.conf',
-	'example.org server-cn-only.crt server-cn-only.key ""');
+	'example.org server-cn-only.crt server-cn-only.key');
 # example.com uses the client CA.
 $node->append_conf('pg_hosts.conf',
 	'example.com server-cn-only.crt server-cn-only.key root+client_ca.crt');
 # example.net uses the server CA (which is wrong).
 $node->append_conf('pg_hosts.conf',
 	'example.net server-cn-only.crt server-cn-only.key root+server_ca.crt');
-$node->reload;
+$node->restart;
 
 $connstr =
   "user=ssltestuser dbname=certdb hostaddr=$SERVERHOSTADDR sslmode=require sslsni=1";
 
-foreach my $default_ca ("", "root+client_ca", "root+server_ca")
-{
-	# The default CA should, not matter for the purposes of these tests, since
-	# we connect to the other hosts explicitly. Test with various default CA
-	# settings to ensure it's isolated from the actual connections.
-	$ssl_server->switch_server_cert(
-		$node,
-		certfile => 'server-cn-only',
-		cafile => $default_ca);
+# example.org is unconfigured and should fail.
+$node->connect_fails(
+	"$connstr host=example.org sslcertmode=require sslcert=ssl/client.crt"
+	  . $ssl_server->sslkey('client.key'),
+	"host: 'example.org', ca: '': connect with sslcert, no client CA configured",
+	expected_stderr => qr/client certificates can only be checked if a root certificate store is available/);
 
-	# example.org is unconfigured and should fail.
-	$node->connect_fails(
-		"$connstr host=example.org sslcertmode=require sslcert=ssl/client.crt "
-		  . $ssl_server->sslkey('client.key'),
-		"host: 'example.org', ca: '$default_ca': connect with sslcert, no client CA configured",
-		expected_stderr => qr/unknown ca/);
+# example.com is configured and should require a valid client cert.
+$node->connect_fails(
+	"$connstr host=example.com sslcertmode=disable",
+	"host: 'example.com', ca: 'root+client_ca.crt': connect fails if no client certificate sent",
+	expected_stderr => qr/connection requires a valid client certificate/);
 
-	# example.com is configured and should require a valid client cert.
-	$node->connect_fails(
-		"$connstr host=example.com sslcertmode=disable",
-		"host: 'example.com', ca: '$default_ca': connect fails if no client certificate sent",
-		expected_stderr => qr/connection requires a valid client certificate/
-	);
+$node->connect_ok(
+	"$connstr host=example.com sslcertmode=require sslcert=ssl/client.crt "
+	  . $ssl_server->sslkey('client.key'),
+	"host: 'example.com', ca: 'root+client_ca.crt': connect with sslcert, client certificate sent"
+);
 
-	$node->connect_ok(
-		"$connstr host=example.com sslrootcert=ssl/root+server_ca.crt sslcertmode=require sslcert=ssl/client.crt "
-		  . $ssl_server->sslkey('client.key'),
-		"host: 'example.com', ca: '$default_ca': connect with sslcert, client certificate sent"
-	);
+# example.net is configured and should require a client cert, but will
+# always fail verification.
+$node->connect_fails(
+	"$connstr host=example.net sslcertmode=disable",
+	"host: 'example.net', ca: 'root+server_ca.crt': connect fails if no client certificate sent",
+	expected_stderr => qr/connection requires a valid client certificate/);
 
-	# example.net is configured and should require a client cert, but will
-	# always fail verification.
-	$node->connect_fails(
-		"$connstr host=example.net sslcertmode=disable",
-		"host: 'example.net', ca: '$default_ca': connect fails if no client certificate sent",
-		expected_stderr => qr/connection requires a valid client certificate/
-	);
-
-	$node->connect_fails(
-		"$connstr host=example.net sslcertmode=require sslcert=ssl/client.crt "
-		  . $ssl_server->sslkey('client.key'),
-		"host: 'example.net', ca: '$default_ca': connect with sslcert, client certificate sent",
-		expected_stderr => qr/unknown ca/);
-}
+$node->connect_fails(
+	"$connstr host=example.net sslcertmode=require sslcert=ssl/client.crt "
+	  . $ssl_server->sslkey('client.key'),
+	"host: 'example.net', ca: 'root+server_ca.crt': connect with sslcert, client certificate sent",
+	expected_stderr => qr/unknown ca/);
 
 done_testing();

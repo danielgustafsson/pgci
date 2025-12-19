@@ -204,6 +204,7 @@ parse_hosts_line(TokenizedAuthLine *tok_line, int elevel)
 	parsedline->sourcefile = pstrdup(tok_line->file_name);
 	parsedline->linenumber = tok_line->line_num;
 	parsedline->rawline = pstrdup(tok_line->raw_line);
+	parsedline->hostnames = NIL;
 
 	/* Initialize optional fields */
 	parsedline->ssl_passphrase_cmd = NULL;
@@ -212,8 +213,21 @@ parse_hosts_line(TokenizedAuthLine *tok_line, int elevel)
 	/* Hostname */
 	field = list_head(tok_line->fields);
 	tokens = lfirst(field);
-	token = linitial(tokens);
-	parsedline->hostname = pstrdup(token->string);
+	foreach_ptr(AuthToken, hostname, tokens)
+	{
+		if ((tokens->length > 1) &&
+			(strcmp(hostname->string, "*") == 0 || strcmp(hostname->string, "/no_sni/") == 0))
+		{
+			ereport(elevel,
+					errcode(ERRCODE_CONFIG_FILE_ERROR),
+					errmsg("default and non-SNI entries cannot be mixed with other entries"),
+					errcontext("line %d of configuration file \"%s\"",
+							   tok_line->line_num, tok_line->file_name));
+			return NULL;
+		}
+
+		parsedline->hostnames = lappend(parsedline->hostnames, pstrdup(hostname->string));
+	}
 
 	/* SSL Certificate (Required) */
 	field = lnext(tok_line->fields, field);
@@ -227,6 +241,15 @@ parse_hosts_line(TokenizedAuthLine *tok_line, int elevel)
 		return NULL;
 	}
 	tokens = lfirst(field);
+	if (tokens->length > 1)
+	{
+		ereport(elevel,
+				errcode(ERRCODE_CONFIG_FILE_ERROR),
+				errmsg("multiple values specified for SSL certificate"),
+				errcontext("line %d of configuration file \"%s\"",
+						   tok_line->line_num, tok_line->file_name));
+		return NULL;
+	}
 	token = linitial(tokens);
 	parsedline->ssl_cert = pstrdup(token->string);
 
@@ -242,6 +265,15 @@ parse_hosts_line(TokenizedAuthLine *tok_line, int elevel)
 		return NULL;
 	}
 	tokens = lfirst(field);
+	if (tokens->length > 1)
+	{
+		ereport(elevel,
+				errcode(ERRCODE_CONFIG_FILE_ERROR),
+				errmsg("multiple values specified for SSL key"),
+				errcontext("line %d of configuration file \"%s\"",
+						   tok_line->line_num, tok_line->file_name));
+		return NULL;
+	}
 	token = linitial(tokens);
 	parsedline->ssl_key = pstrdup(token->string);
 
@@ -250,6 +282,15 @@ parse_hosts_line(TokenizedAuthLine *tok_line, int elevel)
 	if (!field)
 		return parsedline;
 	tokens = lfirst(field);
+	if (tokens->length > 1)
+	{
+		ereport(elevel,
+				errcode(ERRCODE_CONFIG_FILE_ERROR),
+				errmsg("multiple values specified for SSL CA"),
+				errcontext("line %d of configuration file \"%s\"",
+						   tok_line->line_num, tok_line->file_name));
+		return NULL;
+	}
 	token = linitial(tokens);
 	parsedline->ssl_ca = pstrdup(token->string);
 
@@ -301,7 +342,7 @@ parse_hosts_line(TokenizedAuthLine *tok_line, int elevel)
  * load_hosts
  *
  * Reads and parses the pg_hosts.conf configuration file and passes back a List
- * of HostLine elements containing the parsed lines, or NIL in case of an empty
+ * of HostsLine elements containing the parsed lines, or NIL in case of an empty
  * file.  The list is returned in the hosts_lines parameter. If loading the
  * file was successful, true is returned, else false.  This function is
  * intended to be executed within a temporary memory context which can be

@@ -2626,7 +2626,7 @@ openssl x509 -req -in server.csr -text -days 365 \
 
    <para>
     <replaceable>hostname</replaceable> should either be set to the literal
-    hostname for the connection, <literal>no_sni</literal> or <literal>*</literal>.
+    hostname for the connection, <literal>/no_sni/</literal> or <literal>*</literal>.
     <xref linkend="hostname-values"/> contain details on how these values are
     used.
     <table id="hostname-values">
@@ -2644,11 +2644,15 @@ openssl x509 -req -in server.csr -text -days 365 \
        <row>
         <entry><literal>*</literal></entry>
         <entry>Not required</entry>
-        <entry>Default host, matches all connections</entry>
+        <entry>
+         Default host, matches all connections. Multiple hostnames can be defined
+         by using a comma separated list. The certificate and key will be used
+         for connections to all hosts in the list.
+        </entry>
        </row>
 
        <row>
-        <entry><literal>no_sni</literal></entry>
+        <entry><literal>/no_sni/</literal></entry>
         <entry>Not allowed</entry>
         <entry>
          Certificate and key to use for connection with no <literal>sslsni</literal> defined.

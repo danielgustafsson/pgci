@@ -159,13 +159,12 @@ typedef struct HostsLine
 	char	   *rawline;
 
 	/* Required fields */
-	bool		default_host;
-	char	   *hostname;
+	List	   *hostnames;
 	char	   *ssl_key;
 	char	   *ssl_cert;
-	char	   *ssl_ca;
 
 	/* Optional fields */
+	char	   *ssl_ca;
 	char	   *ssl_passphrase_cmd;
 	bool		ssl_passphrase_reload;
 } HostsLine;
@@ -176,6 +175,7 @@ typedef enum HostsFileLoad
 	HOSTSFILE_LOAD_FAILED,
 	HOSTSFILE_EMPTY,
 	HOSTSFILE_MISSING,
+	HOSTSFILE_DISABLED,
 } HostsFileLoadResult;
 
 /*

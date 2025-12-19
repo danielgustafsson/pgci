@@ -2749,6 +2749,13 @@
   max => '0',
 },
 
+{ name => 'ssl_sni', type => 'bool', context => 'PGC_SIGHUP', group => 'CONN_AUTH_SSL',
+  short_desc => 'Sets whether to interpret SNI extensions in SSL connections.',
+  flags => 'GUC_SUPERUSER_ONLY',
+  variable => 'ssl_sni',
+  boot_val => 'false',
+},
+
 { name => 'ssl_tls13_ciphers', type => 'string', context => 'PGC_SIGHUP', group => 'CONN_AUTH_SSL',
   short_desc => 'Sets the list of allowed TLSv1.3 cipher suites.',
   long_desc => 'An empty string means use the default cipher suites.',

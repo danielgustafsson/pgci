@@ -53,7 +53,7 @@
 
 typedef struct HostContext
 {
-	const char *hostname;
+	List	   *hostnames;
 	SSL_CTX    *context;
 	bool		ssl_loaded_verify_locations;
 } HostContext;
@@ -130,19 +130,10 @@ be_tls_init(bool isServerStart)
 	MemoryContext host_memcxt;
 	char	   *err_msg;
 	int			res;
-
-	/*
-	 * If there are contexts loaded when we init they must be released. This
-	 * should only be possible during configuration reloads and not when the
-	 * server is starting up.
-	 */
-	if (sni_contexts != NIL || default_context || no_sni_context)
-	{
-		Assert(!isServerStart);
-		free_contexts();
-		Host_context = NULL;
-		SSL_context = NULL;
-	}
+	List	   *new_sni_contexts = NIL;
+	HostContext *new_default_context = NULL;
+	HostContext *new_no_sni_context = NULL;
+	HostContext *new_Host_context = NULL;
 
 	/*
 	 * Attempt to load, and parse, TLS configuration from the pg_hosts.conf
@@ -151,12 +142,17 @@ be_tls_init(bool isServerStart)
 	 * Make sure to allocate the parsed rows in a temporary memory context so
 	 * that we can avoid memory leaks from the parsing process.
 	 */
-	host_memcxt = AllocSetContextCreate(CurrentMemoryContext,
-										"hosts file parser context",
-										ALLOCSET_SMALL_SIZES);
-	oldcxt = MemoryContextSwitchTo(host_memcxt);
-	res = load_hosts(&pg_hosts, &err_msg);
-	MemoryContextSwitchTo(oldcxt);
+	if (ssl_sni)
+	{
+		host_memcxt = AllocSetContextCreate(CurrentMemoryContext,
+											"hosts file parser context",
+											ALLOCSET_SMALL_SIZES);
+		oldcxt = MemoryContextSwitchTo(host_memcxt);
+		res = load_hosts(&pg_hosts, &err_msg);
+		MemoryContextSwitchTo(oldcxt);
+	}
+	else
+		res = HOSTSFILE_DISABLED;
 
 	/*
 	 * pg_hosts.conf is not required to contain configuration, but if it does
@@ -194,12 +190,13 @@ be_tls_init(bool isServerStart)
 						errcode(ERRCODE_CONFIG_FILE_ERROR),
 						errmsg("unable to load SSL config from \"%s\" line %i",
 							   host->sourcefile, host->linenumber));
-				free_contexts();
 				MemoryContextDelete(host_memcxt);
 				return -1;
 			}
 
-			host_context = palloc0(sizeof(HostContext));
+			host_context = palloc(sizeof(HostContext));
+			host_context->hostnames = NIL;
+			host_context->ssl_loaded_verify_locations = false;
 			host_context->context = tmp_context;
 
 			/* Set flag to remember whether CA store has been loaded */
@@ -208,16 +205,21 @@ be_tls_init(bool isServerStart)
 
 			/*
 			 * The hostname in the context is NULL in case it is the default
-			 * host, or a context to use for non-SNI connections.
+			 * host, or a context to use for non-SNI connections. We already
+			 * know that default and non-SNI configurations are not mixed with
+			 * hostnames so in those cases we can just take the head of the
+			 * list.
 			 */
-			if (strcmp(host->hostname, "*") == 0)
-				default_context = host_context;
-			else if (strcmp(host->hostname, "no_sni") == 0)
-				no_sni_context = host_context;
+			if (strcmp(linitial(host->hostnames), "*") == 0)
+				new_default_context = host_context;
+			else if (strcmp(linitial(host->hostnames), "/no_sni/") == 0)
+				new_no_sni_context = host_context;
 			else
 			{
-				host_context->hostname = pstrdup(host->hostname);
-				sni_contexts = lappend(sni_contexts, host_context);
+				foreach_ptr(char, hostname, host->hostnames)
+					host_context->hostnames = lappend(host_context->hostnames,
+													  pstrdup(hostname));
+				new_sni_contexts = lappend(new_sni_contexts, host_context);
 			}
 
 			/*
@@ -225,8 +227,8 @@ be_tls_init(bool isServerStart)
 			 * until the SNI callback switches over to the expected one, for
 			 * now just set it to the first one we see.
 			 */
-			if (!Host_context)
-				Host_context = host_context;
+			if (!new_Host_context)
+				new_Host_context = host_context;
 		}
 
 		MemoryContextDelete(host_memcxt);
@@ -236,7 +238,7 @@ be_tls_init(bool isServerStart)
 	 * If the pg_hosts.conf file doesn't exist, or is empty, then load the
 	 * config from postgresql.conf.
 	 */
-	else if (res == HOSTSFILE_EMPTY || res == HOSTSFILE_MISSING)
+	else if (res == HOSTSFILE_DISABLED || res == HOSTSFILE_EMPTY || res == HOSTSFILE_MISSING)
 	{
 		HostsLine	pgconf;
 		SSL_CTX    *tmp_context = NULL;
@@ -264,23 +266,42 @@ be_tls_init(bool isServerStart)
 		 * can also set it as the Host_context since it will be used for all
 		 * connections.
 		 */
-		default_context = palloc0(sizeof(HostContext));
-		default_context->context = tmp_context;
-		Host_context = default_context;
+		new_default_context = palloc(sizeof(HostContext));
+		new_default_context->context = tmp_context;
+		new_default_context->ssl_loaded_verify_locations = false;
+		new_Host_context = new_default_context;
 
 		/* Set flag to remember whether CA store has been loaded */
 		if (ssl_ca_file[0])
-			default_context->ssl_loaded_verify_locations = true;
+			new_default_context->ssl_loaded_verify_locations = true;
 	}
 
 	/* Make sure we have at least one certificate loaded */
-	if (sni_contexts == NIL && !default_context && !no_sni_context)
+	if (new_sni_contexts == NIL && !new_default_context && !new_no_sni_context)
 	{
 		ereport(isServerStart ? FATAL : LOG,
 				errcode(ERRCODE_CONFIG_FILE_ERROR),
 				errmsg("no SSL contexts loaded"));
 		return -1;
 	}
+
+	/*
+	 * If there are contexts loaded when we init they must be released. This
+	 * should only be possible during configuration reloads and not when the
+	 * server is starting up.
+	 */
+	if (sni_contexts != NIL || default_context || no_sni_context)
+	{
+		Assert(!isServerStart);
+		free_contexts();
+		Host_context = NULL;
+		SSL_context = NULL;
+	}
+
+	sni_contexts = new_sni_contexts;
+	no_sni_context = new_no_sni_context;
+	default_context = new_default_context;
+	Host_context = new_Host_context;
 
 	SSL_context = Host_context->context;
 
@@ -327,7 +348,8 @@ ssl_init_context(bool isServerStart, HostsLine *host_line)
 	 * Install SNI TLS extension callback in order to validate hostnames in
 	 * case we have at least one context configured with a host name.
 	 */
-	SSL_CTX_set_tlsext_servername_callback(context, sni_servername_cb);
+	if (ssl_sni)
+		SSL_CTX_set_tlsext_servername_callback(context, sni_servername_cb);
 
 	/*
 	 * Call init hook (usually to set password callback)
@@ -1619,13 +1641,17 @@ sni_servername_cb(SSL *ssl, int *al, void *arg)
 		/*
 		 * We have a requested hostname from the client, match against all
 		 * entries in the pg_hosts configuration and attempt to find a match.
+		 * Matching is done case insensitive as per RFC 952 and RFC 921.
 		 */
 		foreach_ptr(HostContext, host, sni_contexts)
 		{
-			if (strcmp(host->hostname, tlsext_hostname) == 0)
+			foreach_ptr(char, hostname, host->hostnames)
 			{
-				install_context = host;
-				break;
+				if (pg_strcasecmp(hostname, tlsext_hostname) == 0)
+				{
+					install_context = host;
+					goto found;
+				}
 			}
 		}
 
@@ -1644,6 +1670,7 @@ sni_servername_cb(SSL *ssl, int *al, void *arg)
 	if (install_context == NULL)
 		return SSL_TLSEXT_ERR_ALERT_FATAL;
 
+found:
 	Host_context = install_context;
 	SSL_context = install_context->context;
 	if (SSL_set_SSL_CTX(ssl, SSL_context) == NULL)
@@ -2106,8 +2133,12 @@ free_contexts(void)
 	{
 		foreach_ptr(HostContext, host, sni_contexts)
 		{
-			if (host->hostname)
-				pfree(unconstify(char *, host->hostname));
+			if (host->hostnames != NIL)
+			{
+				foreach_ptr(char, hostname, host->hostnames)
+					pfree(hostname);
+				list_free(host->hostnames);
+			}
 			SSL_CTX_free(host->context);
 		}
 
@@ -2116,7 +2147,7 @@ free_contexts(void)
 	}
 
 	/*
-	 * The hostname need not be freed for the no_sni and default contexts
+	 * The hostname list need not be freed for the no_sni and default contexts
 	 * since they by definition are not connected to a hostname and thus have
 	 * none allocated.
 	 */

@@ -51,9 +51,15 @@
 #endif
 #include <openssl/x509v3.h>
 
+typedef struct HostContext
+{
+	List	   *hostnames;
+	SSL_CTX    *context;
+	bool		ssl_loaded_verify_locations;
+} HostContext;
 
 /* default init hook can be overridden by a shared library */
-static void default_openssl_tls_init(SSL_CTX *context, bool isServerStart);
+static void default_openssl_tls_init(SSL_CTX *context, bool isServerStart, HostsLine *hosts);
 openssl_tls_init_hook_typ openssl_tls_init_hook = default_openssl_tls_init;
 
 static int	port_bio_read(BIO *h, char *buf, int size);
@@ -73,6 +79,7 @@ static int	alpn_cb(SSL *ssl,
 					const unsigned char *in,
 					unsigned int inlen,
 					void *userdata);
+static int	sni_servername_cb(SSL *ssl, int *al, void *arg);
 static bool initialize_dh(SSL_CTX *context, bool isServerStart);
 static bool initialize_ecdh(SSL_CTX *context, bool isServerStart);
 static const char *SSLerrmessageExt(unsigned long ecode, const char *replacement);
@@ -80,12 +87,26 @@ static const char *SSLerrmessage(unsigned long ecode);
 
 static char *X509_NAME_to_cstring(X509_NAME *name);
 
+/* List of SSL contexts for hostname defined connections */
+static List *sni_contexts = NIL;
+
+/* The default SSL context to use as fallback in case no hostname matches */
+static HostContext *default_context = NULL;
+
+/* The SSL context to use for connections without SNI */
+static HostContext *no_sni_context = NULL;
+
+/* The currently active context */
 static SSL_CTX *SSL_context = NULL;
+static HostContext *Host_context = NULL;
+
 static bool dummy_ssl_passwd_cb_called = false;
 static bool ssl_is_server_start;
 
 static int	ssl_protocol_version_to_openssl(int v);
 static const char *ssl_protocol_version_to_string(int v);
+static SSL_CTX *ssl_init_context(bool isServerStart, HostsLine *host);
+static void free_contexts(void);
 
 struct CallbackErr
 {
@@ -103,9 +124,191 @@ struct CallbackErr
 int
 be_tls_init(bool isServerStart)
 {
+	List	   *pg_hosts = NIL;
+	ListCell   *line;
+	MemoryContext oldcxt;
+	MemoryContext host_memcxt;
+	char	   *err_msg;
+	int			res;
+
+	/*
+	 * If there are contexts loaded when we init they must be released. This
+	 * should only be possible during configuration reloads and not when the
+	 * server is starting up.
+	 */
+	if (sni_contexts != NIL || default_context || no_sni_context)
+	{
+		Assert(!isServerStart);
+		free_contexts();
+		Host_context = NULL;
+		SSL_context = NULL;
+	}
+
+	/*
+	 * Attempt to load, and parse, TLS configuration from the pg_hosts.conf
+	 * file with the set of hosts returned as a list.  If there are hosts
+	 * configured there they take precedence over the postgresql.conf config.
+	 * Make sure to allocate the parsed rows in a temporary memory context so
+	 * that we can avoid memory leaks from the parsing process.
+	 */
+	if (ssl_sni)
+	{
+		host_memcxt = AllocSetContextCreate(CurrentMemoryContext,
+											"hosts file parser context",
+											ALLOCSET_SMALL_SIZES);
+		oldcxt = MemoryContextSwitchTo(host_memcxt);
+		res = load_hosts(&pg_hosts, &err_msg);
+		MemoryContextSwitchTo(oldcxt);
+	}
+	else
+		res = HOSTSFILE_DISABLED;
+
+	/*
+	 * pg_hosts.conf is not required to contain configuration, but if it does
+	 * we error out in case it fails to load rather than continue to try the
+	 * postgresql.conf configuration to avoid silently falling back on an
+	 * undesired configuration.
+	 */
+	if (res == HOSTSFILE_LOAD_FAILED)
+	{
+		ereport(isServerStart ? FATAL : LOG,
+				errcode(ERRCODE_CONFIG_FILE_ERROR),
+				errmsg("could not load \"%s\": %s", "pg_hosts.conf",
+					   err_msg ? err_msg : "unknown error"));
+		MemoryContextDelete(host_memcxt);
+		return -1;
+	}
+
+	/*
+	 * Loading and parsing the hosts file was successful, create contexts for
+	 * each host entry and add to the list of hosts to be checked during
+	 * login.
+	 */
+	else if (res == HOSTSFILE_LOAD_OK)
+	{
+		foreach(line, pg_hosts)
+		{
+			HostContext *host_context;
+			HostsLine  *host = lfirst(line);
+			SSL_CTX    *tmp_context = NULL;
+
+			tmp_context = ssl_init_context(isServerStart, host);
+			if (tmp_context == NULL)
+			{
+				ereport(isServerStart ? FATAL : LOG,
+						errcode(ERRCODE_CONFIG_FILE_ERROR),
+						errmsg("unable to load SSL config from \"%s\" line %i",
+							   host->sourcefile, host->linenumber));
+				free_contexts();
+				MemoryContextDelete(host_memcxt);
+				return -1;
+			}
+
+			host_context = palloc(sizeof(HostContext));
+			host_context->hostnames = NIL;
+			host_context->ssl_loaded_verify_locations = false;
+			host_context->context = tmp_context;
+
+			/* Set flag to remember whether CA store has been loaded */
+			if (host->ssl_ca && host->ssl_ca[0] != '\0')
+				host_context->ssl_loaded_verify_locations = true;
+
+			/*
+			 * The hostname in the context is NULL in case it is the default
+			 * host, or a context to use for non-SNI connections. We already
+			 * know that default and non-SNI configurations are not mixed with
+			 * hostnames so in those cases we can just take the head of the
+			 * list.
+			 */
+			if (strcmp(linitial(host->hostnames), "*") == 0)
+				default_context = host_context;
+			else if (strcmp(linitial(host->hostnames), "/no_sni/") == 0)
+				no_sni_context = host_context;
+			else
+			{
+				foreach_ptr(char, hostname, host->hostnames)
+					host_context->hostnames = lappend(host_context->hostnames,
+													  pstrdup(hostname));
+				sni_contexts = lappend(sni_contexts, host_context);
+			}
+
+			/*
+			 * There needs to be an installed context to drive the handshake
+			 * until the SNI callback switches over to the expected one, for
+			 * now just set it to the first one we see.
+			 */
+			if (!Host_context)
+				Host_context = host_context;
+		}
+
+		MemoryContextDelete(host_memcxt);
+	}
+
+	/*
+	 * If the pg_hosts.conf file doesn't exist, or is empty, then load the
+	 * config from postgresql.conf.
+	 */
+	else if (res == HOSTSFILE_DISABLED || res == HOSTSFILE_EMPTY || res == HOSTSFILE_MISSING)
+	{
+		HostsLine	pgconf;
+		SSL_CTX    *tmp_context = NULL;
+
+		memset(&pgconf, 0, sizeof(pgconf));
+		pgconf.ssl_cert = ssl_cert_file;
+		pgconf.ssl_key = ssl_key_file;
+		pgconf.ssl_ca = ssl_ca_file;
+		pgconf.ssl_passphrase_cmd = ssl_passphrase_command;
+		pgconf.ssl_passphrase_reload = ssl_passphrase_command_supports_reload;
+
+		tmp_context = ssl_init_context(isServerStart, &pgconf);
+		if (tmp_context == NULL)
+		{
+			ereport(isServerStart ? FATAL : LOG,
+					errcode(ERRCODE_CONFIG_FILE_ERROR),
+					errmsg("could not load SSL configuration from \"%s\"",
+						   "postgresql.conf"));
+			return -1;
+		}
+
+		/*
+		 * If postgresql.conf is used to configure SSL then by definition it
+		 * will be the default context as we don't have per-host config.  We
+		 * can also set it as the Host_context since it will be used for all
+		 * connections.
+		 */
+		default_context = palloc0(sizeof(HostContext));
+		default_context->context = tmp_context;
+		Host_context = default_context;
+
+		/* Set flag to remember whether CA store has been loaded */
+		if (ssl_ca_file[0])
+			default_context->ssl_loaded_verify_locations = true;
+	}
+
+	/* Make sure we have at least one certificate loaded */
+	if (sni_contexts == NIL && !default_context && !no_sni_context)
+	{
+		ereport(isServerStart ? FATAL : LOG,
+				errcode(ERRCODE_CONFIG_FILE_ERROR),
+				errmsg("no SSL contexts loaded"));
+		return -1;
+	}
+
+	SSL_context = Host_context->context;
+
+	return 0;
+}
+
+static SSL_CTX *
+ssl_init_context(bool isServerStart, HostsLine *host_line)
+{
 	SSL_CTX    *context;
 	int			ssl_ver_min = -1;
 	int			ssl_ver_max = -1;
+
+	const char *ctx_ssl_cert_file = host_line->ssl_cert;
+	const char *ctx_ssl_key_file = host_line->ssl_key;
+	const char *ctx_ssl_ca_file = host_line->ssl_ca;
 
 	/*
 	 * Create a new SSL context into which we'll load all the configuration
@@ -133,9 +336,16 @@ be_tls_init(bool isServerStart)
 	SSL_CTX_set_mode(context, SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
 
 	/*
+	 * Install SNI TLS extension callback in order to validate hostnames in
+	 * case we have at least one context configured with a host name.
+	 */
+	if (ssl_sni)
+		SSL_CTX_set_tlsext_servername_callback(context, sni_servername_cb);
+
+	/*
 	 * Call init hook (usually to set password callback)
 	 */
-	(*openssl_tls_init_hook) (context, isServerStart);
+	(*openssl_tls_init_hook) (context, isServerStart, host_line);
 
 	/* used by the callback */
 	ssl_is_server_start = isServerStart;
@@ -143,16 +353,16 @@ be_tls_init(bool isServerStart)
 	/*
 	 * Load and verify server's certificate and private key
 	 */
-	if (SSL_CTX_use_certificate_chain_file(context, ssl_cert_file) != 1)
+	if (SSL_CTX_use_certificate_chain_file(context, ctx_ssl_cert_file) != 1)
 	{
 		ereport(isServerStart ? FATAL : LOG,
 				(errcode(ERRCODE_CONFIG_FILE_ERROR),
 				 errmsg("could not load server certificate file \"%s\": %s",
-						ssl_cert_file, SSLerrmessage(ERR_get_error()))));
+						ctx_ssl_cert_file, SSLerrmessage(ERR_get_error()))));
 		goto error;
 	}
 
-	if (!check_ssl_key_file_permissions(ssl_key_file, isServerStart))
+	if (!check_ssl_key_file_permissions(ctx_ssl_key_file, isServerStart))
 		goto error;
 
 	/*
@@ -161,19 +371,19 @@ be_tls_init(bool isServerStart)
 	dummy_ssl_passwd_cb_called = false;
 
 	if (SSL_CTX_use_PrivateKey_file(context,
-									ssl_key_file,
+									ctx_ssl_key_file,
 									SSL_FILETYPE_PEM) != 1)
 	{
 		if (dummy_ssl_passwd_cb_called)
 			ereport(isServerStart ? FATAL : LOG,
 					(errcode(ERRCODE_CONFIG_FILE_ERROR),
 					 errmsg("private key file \"%s\" cannot be reloaded because it requires a passphrase",
-							ssl_key_file)));
+							ctx_ssl_key_file)));
 		else
 			ereport(isServerStart ? FATAL : LOG,
 					(errcode(ERRCODE_CONFIG_FILE_ERROR),
 					 errmsg("could not load private key file \"%s\": %s",
-							ssl_key_file, SSLerrmessage(ERR_get_error()))));
+							ctx_ssl_key_file, SSLerrmessage(ERR_get_error()))));
 		goto error;
 	}
 
@@ -325,17 +535,17 @@ be_tls_init(bool isServerStart)
 	/*
 	 * Load CA store, so we can verify client certificates if needed.
 	 */
-	if (ssl_ca_file[0])
+	if (ctx_ssl_ca_file && ctx_ssl_ca_file[0])
 	{
 		STACK_OF(X509_NAME) * root_cert_list;
 
-		if (SSL_CTX_load_verify_locations(context, ssl_ca_file, NULL) != 1 ||
-			(root_cert_list = SSL_load_client_CA_file(ssl_ca_file)) == NULL)
+		if (SSL_CTX_load_verify_locations(context, ctx_ssl_ca_file, NULL) != 1 ||
+			(root_cert_list = SSL_load_client_CA_file(ctx_ssl_ca_file)) == NULL)
 		{
 			ereport(isServerStart ? FATAL : LOG,
 					(errcode(ERRCODE_CONFIG_FILE_ERROR),
 					 errmsg("could not load root certificate file \"%s\": %s",
-							ssl_ca_file, SSLerrmessage(ERR_get_error()))));
+							ctx_ssl_ca_file, SSLerrmessage(ERR_get_error()))));
 			goto error;
 		}
 
@@ -347,17 +557,16 @@ be_tls_init(bool isServerStart)
 		 * free it when no longer needed.
 		 */
 		SSL_CTX_set_client_CA_list(context, root_cert_list);
-
-		/*
-		 * Always ask for SSL client cert, but don't fail if it's not
-		 * presented.  We might fail such connections later, depending on what
-		 * we find in pg_hba.conf.
-		 */
-		SSL_CTX_set_verify(context,
-						   (SSL_VERIFY_PEER |
-							SSL_VERIFY_CLIENT_ONCE),
-						   verify_cb);
 	}
+
+	/*
+	 * Always ask for SSL client cert, but don't fail if it's not presented.
+	 * We might fail such connections later, depending on what we find in
+	 * pg_hba.conf.
+	 */
+	SSL_CTX_set_verify(context,
+					   (SSL_VERIFY_PEER | SSL_VERIFY_CLIENT_ONCE),
+					   verify_cb);
 
 	/*----------
 	 * Load the Certificate Revocation List (CRL).
@@ -407,38 +616,19 @@ be_tls_init(bool isServerStart)
 		}
 	}
 
-	/*
-	 * Success!  Replace any existing SSL_context.
-	 */
-	if (SSL_context)
-		SSL_CTX_free(SSL_context);
-
-	SSL_context = context;
-
-	/*
-	 * Set flag to remember whether CA store has been loaded into SSL_context.
-	 */
-	if (ssl_ca_file[0])
-		ssl_loaded_verify_locations = true;
-	else
-		ssl_loaded_verify_locations = false;
-
-	return 0;
+	return context;
 
 	/* Clean up by releasing working context. */
 error:
 	if (context)
 		SSL_CTX_free(context);
-	return -1;
+	return NULL;
 }
 
 void
 be_tls_destroy(void)
 {
-	if (SSL_context)
-		SSL_CTX_free(SSL_context);
-	SSL_context = NULL;
-	ssl_loaded_verify_locations = false;
+	free_contexts();
 }
 
 int
@@ -771,6 +961,9 @@ be_tls_close(Port *port)
 		pfree(port->peer_dn);
 		port->peer_dn = NULL;
 	}
+
+	Host_context = NULL;
+	SSL_context = NULL;
 }
 
 ssize_t
@@ -1144,7 +1337,7 @@ ssl_external_passwd_cb(char *buf, int size, int rwflag, void *userdata)
 
 	Assert(rwflag == 0);
 
-	return run_ssl_passphrase_command(prompt, ssl_is_server_start, buf, size);
+	return run_ssl_passphrase_command(prompt, ssl_is_server_start, buf, size, userdata);
 }
 
 /*
@@ -1390,6 +1583,99 @@ alpn_cb(SSL *ssl,
 	}
 }
 
+/*
+ * sni_servername_cb
+ *
+ * Callback executed by OpenSSL during handshake in case the server has been
+ * configured to validate hostnames.  Returning SSL_TLSEXT_ERR_ALERT_FATAL to
+ * OpenSSL will immediately terminate the handshake.
+ */
+static int
+sni_servername_cb(SSL *ssl, int *al, void *arg)
+{
+	const char *tlsext_hostname;
+	HostContext *install_context = NULL;
+
+	Assert(ssl_sni);
+
+	tlsext_hostname = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
+
+	/*
+	 * If there is no hostname set in the TLS extension, we have two options:
+	 * i) there is a HostContext defined for non-SNI connections, in that case
+	 * we switch to that; ii) there is no non-SNI config and we error out as
+	 * there is no context to switch to.
+	 */
+	if (!tlsext_hostname)
+	{
+		if (no_sni_context)
+			install_context = no_sni_context;
+		else if (default_context)
+			install_context = default_context;
+		else
+		{
+			/*
+			 * The error message for a missing server_name should, according
+			 * to RFC 8446, be missing_extension. This isn't entirely ideal
+			 * since the user won't be able to tell which extension the server
+			 * considered missing.  Sending unrecognized_name would be a more
+			 * helpful error, but for now we stick to the RFC.
+			 */
+			*al = SSL_AD_MISSING_EXTENSION;
+
+			ereport(COMMERROR,
+					(errcode(ERRCODE_PROTOCOL_VIOLATION),
+					 errmsg("no hostname provided in callback")));
+			return SSL_TLSEXT_ERR_ALERT_FATAL;
+		}
+	}
+	else
+	{
+		/*
+		 * We have a requested hostname from the client, match against all
+		 * entries in the pg_hosts configuration and attempt to find a match.
+		 * Matching is done case insensitive as per RFC 952 and RFC 921.
+		 */
+		foreach_ptr(HostContext, host, sni_contexts)
+		{
+			foreach_ptr(char, hostname, host->hostnames)
+			{
+				if (pg_strcasecmp(hostname, tlsext_hostname) == 0)
+				{
+					install_context = host;
+					goto found;
+				}
+			}
+		}
+
+		/*
+		 * If no host specific match was found, and there is a default config,
+		 * then fall back to using that.
+		 */
+		if (!install_context && default_context)
+			install_context = default_context;
+	}
+
+	/*
+	 * If we reach here without a context chosen as the session context then
+	 * fail the handshake and terminate the connection.
+	 */
+	if (install_context == NULL)
+		return SSL_TLSEXT_ERR_ALERT_FATAL;
+
+found:
+	Host_context = install_context;
+	SSL_context = install_context->context;
+	if (SSL_set_SSL_CTX(ssl, SSL_context) == NULL)
+	{
+		ereport(COMMERROR,
+				errcode(ERRCODE_PROTOCOL_VIOLATION),
+				errmsg("failed to switch to SSL context for host"));
+		return SSL_TLSEXT_ERR_ALERT_FATAL;
+	}
+
+	return SSL_TLSEXT_ERR_OK;
+}
 
 /*
  * Set DH parameters for generating ephemeral DH keys.  The
@@ -1599,6 +1885,14 @@ be_tls_get_peer_serial(Port *port, char *ptr, size_t len)
 		ptr[0] = '\0';
 }
 
+bool
+be_tls_loaded_verify_locations(void)
+{
+	if (!Host_context)
+		return false;
+	return Host_context->ssl_loaded_verify_locations;
+}
+
 char *
 be_tls_get_certificate_hash(Port *port, size_t *len)
 {
@@ -1792,17 +2086,23 @@ ssl_protocol_version_to_string(int v)
 
 
 static void
-default_openssl_tls_init(SSL_CTX *context, bool isServerStart)
+default_openssl_tls_init(SSL_CTX *context, bool isServerStart, HostsLine *host)
 {
 	if (isServerStart)
 	{
-		if (ssl_passphrase_command[0])
+		if (host->ssl_passphrase_cmd != NULL)
+		{
 			SSL_CTX_set_default_passwd_cb(context, ssl_external_passwd_cb);
+			SSL_CTX_set_default_passwd_cb_userdata(context, host->ssl_passphrase_cmd);
+		}
 	}
 	else
 	{
-		if (ssl_passphrase_command[0] && ssl_passphrase_command_supports_reload)
+		if (host->ssl_passphrase_cmd != NULL && host->ssl_passphrase_reload)
+		{
 			SSL_CTX_set_default_passwd_cb(context, ssl_external_passwd_cb);
+			SSL_CTX_set_default_passwd_cb_userdata(context, host->ssl_passphrase_cmd);
+		}
 		else
 
 			/*
@@ -1812,5 +2112,44 @@ default_openssl_tls_init(SSL_CTX *context, bool isServerStart)
 			 * already-running server.
 			 */
 			SSL_CTX_set_default_passwd_cb(context, dummy_ssl_passwd_cb);
+	}
+}
+
+/*
+ * Cleanup function for when hostname configuration is reloaded from the
+ * pg_hosts.conf file, at that point we must discard all existing contexts.
+ */
+static void
+free_contexts(void)
+{
+	if (sni_contexts != NIL)
+	{
+		foreach_ptr(HostContext, host, sni_contexts)
+		{
+			if (host->hostnames != NIL)
+				list_free(host->hostnames);
+			SSL_CTX_free(host->context);
+		}
+
+		list_free_deep(sni_contexts);
+		sni_contexts = NIL;
+	}
+
+	/*
+	 * The hostname list need not be freed for the no_sni and default contexts
+	 * since they by definition are not connected to a hostname and thus have
+	 * none allocated.
+	 */
+	if (no_sni_context)
+	{
+		SSL_CTX_free(no_sni_context->context);
+		pfree(no_sni_context);
+		no_sni_context = NULL;
+	}
+	if (default_context)
+	{
+		SSL_CTX_free(default_context->context);
+		pfree(default_context);
+		default_context = NULL;
 	}
 }

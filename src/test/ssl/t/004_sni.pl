@@ -292,7 +292,7 @@ $node->connect_fails(
 	"$connstr host=example.org sslcertmode=require sslcert=ssl/client.crt"
 	  . $ssl_server->sslkey('client.key'),
 	"host: 'example.org', ca: '': connect with sslcert, no client CA configured",
-	expected_stderr => qr/unknown ca/);
+	expected_stderr => qr/client certificates can only be checked if a root certificate store is available/);
 
 # example.com is configured and should require a valid client cert.
 $node->connect_fails(

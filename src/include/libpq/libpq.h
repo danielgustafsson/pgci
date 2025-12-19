@@ -110,6 +110,7 @@ extern PGDLLIMPORT int ssl_max_protocol_version;
 extern PGDLLIMPORT char *ssl_passphrase_command;
 extern PGDLLIMPORT bool ssl_passphrase_command_supports_reload;
 extern PGDLLIMPORT char *ssl_dh_params_file;
+extern PGDLLIMPORT bool ssl_sni;
 extern PGDLLIMPORT char *SSLCipherSuites;
 extern PGDLLIMPORT char *SSLCipherList;
 extern PGDLLIMPORT char *SSLECDHCurve;

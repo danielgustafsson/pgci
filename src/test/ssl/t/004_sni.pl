@@ -328,6 +328,6 @@ $node->connect_fails(
 	"$connstr host=example.net sslcertmode=require sslcert=ssl/client.crt "
 	  . $ssl_server->sslkey('client.key'),
 	"host: 'example.net', ca: 'root+server_ca.crt': connect with sslcert, client certificate sent",
-	expected_stderr => qr/unknown ca/);
+	expected_stderr => qr/connection requires a valid client certificate/);
 
 done_testing();

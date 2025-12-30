@@ -201,7 +201,7 @@ $result = $node->restart(fail_ok => 1);
 is($result, 0, 'restart fails with incorrect groups');
 ok($node->log_contains(qr/no SSL error reported/) == 0,
 	'error message translated');
-$node->append_conf('ssl_config.conf', qq{ssl_groups='prime256v1'});
+$node->append_conf('sslconfig.conf', qq{ssl_groups='prime256v1'});
 $result = $node->restart(fail_ok => 1);
 
 ### Run client-side tests.

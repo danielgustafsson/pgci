@@ -80,6 +80,7 @@ static int	alpn_cb(SSL *ssl,
 					unsigned int inlen,
 					void *userdata);
 static int	sni_servername_cb(SSL *ssl, int *al, void *arg);
+static int	sni_clienthello_cb(SSL *ssl, int *al, void *arg);
 static bool initialize_dh(SSL_CTX *context, bool isServerStart);
 static bool initialize_ecdh(SSL_CTX *context, bool isServerStart);
 static const char *SSLerrmessageExt(unsigned long ecode, const char *replacement);
@@ -136,11 +137,13 @@ be_tls_init(bool isServerStart)
 	HostContext *new_Host_context = NULL;
 
 	/*
-	 * Attempt to load, and parse, TLS configuration from the pg_hosts.conf
-	 * file with the set of hosts returned as a list.  If there are hosts
-	 * configured there they take precedence over the postgresql.conf config.
-	 * Make sure to allocate the parsed rows in a temporary memory context so
-	 * that we can avoid memory leaks from the parsing process.
+	 * If ssl_sni is enabled, attempt to load and parse TLS configuration from
+	 * the pg_hosts.conf file with the set of hosts returned as a list.  If
+	 * there are hosts configured they take precedence over the postgresql.conf
+	 * config.  Make sure to allocate the parsed rows in a temporary memory
+	 * context so that we can avoid memory leaks from the parsing process.  If
+	 * ssl_sni is disabled then set the state accordingly to make sure we
+	 * instead parse the config from postgresql.conf.
 	 */
 	if (ssl_sni)
 	{
@@ -346,10 +349,13 @@ ssl_init_context(bool isServerStart, HostsLine *host_line)
 
 	/*
 	 * Install SNI TLS extension callback in order to validate hostnames in
-	 * case we have at least one context configured with a host name.
+	 * case ssl_sni has been enabled.
 	 */
 	if (ssl_sni)
+	{
+		SSL_CTX_set_client_hello_cb(context, sni_clienthello_cb, NULL);
 		SSL_CTX_set_tlsext_servername_callback(context, sni_servername_cb);
+	}
 
 	/*
 	 * Call init hook (usually to set password callback)
@@ -566,16 +572,16 @@ ssl_init_context(bool isServerStart, HostsLine *host_line)
 		 * free it when no longer needed.
 		 */
 		SSL_CTX_set_client_CA_list(context, root_cert_list);
-	}
 
-	/*
-	 * Always ask for SSL client cert, but don't fail if it's not presented.
-	 * We might fail such connections later, depending on what we find in
-	 * pg_hba.conf.
-	 */
-	SSL_CTX_set_verify(context,
-					   (SSL_VERIFY_PEER | SSL_VERIFY_CLIENT_ONCE),
-					   verify_cb);
+		/*
+		 * Always ask for SSL client cert, but don't fail if it's not presented.
+		 * We might fail such connections later, depending on what we find in
+		 * pg_hba.conf.
+		 */
+		SSL_CTX_set_verify(context,
+						   (SSL_VERIFY_PEER | SSL_VERIFY_CLIENT_ONCE),
+						   verify_cb);
+	}
 
 	/*----------
 	 * Load the Certificate Revocation List (CRL).
@@ -1592,6 +1598,146 @@ alpn_cb(SSL *ssl,
 	}
 }
 
+static int
+sni_clienthello_cb(SSL *ssl, int *al, void *arg)
+{
+	const char *tlsext_hostname;
+	const unsigned char *tlsext;
+	size_t left, len ;
+	HostContext *install_context = NULL;
+
+	elog(LOG, "XXX: sni_clienthello_cb");
+
+	if (!ssl_sni)
+		return SSL_CLIENT_HELLO_SUCCESS;
+
+	if (SSL_client_hello_get0_ext(ssl, TLSEXT_TYPE_server_name, &tlsext, &left))
+	{
+		elog(LOG, "XXX: sni_clienthello_cb, parsing for TLSEXT_TYPE_server_name");
+		if (left <= 2)
+		{
+			elog(LOG, "XXX: sni_clienthello_cb 1");
+			*al = SSL_AD_MISSING_EXTENSION;
+			return 0;
+		}
+		len = (*(tlsext++) << 8);
+		len += *(tlsext)++;
+		if (len + 2 != left)
+		{
+			elog(LOG, "XXX: sni_clienthello_cb 2");
+			*al = SSL_AD_MISSING_EXTENSION;
+			return 0;
+		}
+
+		left = len;
+
+		if (left == 0 || *tlsext++ != TLSEXT_NAMETYPE_host_name)
+		{
+			elog(LOG, "XXX: sni_clienthello_cb 3");
+			*al = SSL_AD_MISSING_EXTENSION;
+			return 0;
+		}
+
+		left--;
+
+		/* Now we can finally pull out the byte array with the actual hostname. */
+		if (left <= 2)
+		{
+			elog(LOG, "XXX: sni_clienthello_cb 4");
+			*al = SSL_AD_MISSING_EXTENSION;
+			return 0;
+		}
+		len = (*(tlsext++) << 8);
+		len += *(tlsext++);
+		if (len + 2 > left)
+		{
+			elog(LOG, "XXX: sni_clienthello_cb 5");
+			*al = SSL_AD_MISSING_EXTENSION;
+			return 0;
+		}
+		left = len;
+		tlsext_hostname = (const char *)tlsext;
+
+		elog(LOG, "XXX: sni_clienthello_cb: %s", tlsext_hostname);
+
+
+		/*
+		 * We have a requested hostname from the client, match against all
+		 * entries in the pg_hosts configuration and attempt to find a match.
+		 * Matching is done case insensitive as per RFC 952 and RFC 921.
+		 */
+		foreach_ptr(HostContext, host, sni_contexts)
+		{
+			foreach_ptr(char, hostname, host->hostnames)
+			{
+				if (pg_strcasecmp(hostname, tlsext_hostname) == 0)
+				{
+					install_context = host;
+					goto found;
+				}
+			}
+		}
+
+		/*
+		 * If no host specific match was found, and there is a default config,
+		 * then fall back to using that.
+		 */
+		if (!install_context && default_context)
+			install_context = default_context;
+	}
+	else
+	{
+		elog(LOG, "XXX: sni_clienthello_cb: no TLSEXT_TYPE_server_name");
+		if (no_sni_context)
+			install_context = no_sni_context;
+		else if (default_context)
+			install_context = default_context;
+		else
+		{
+			/*
+			 * The error message for a missing server_name should, according
+			 * to RFC 8446, be missing_extension. This isn't entirely ideal
+			 * since the user won't be able to tell which extension the server
+			 * considered missing.  Sending unrecognized_name would be a more
+			 * helpful error, but for now we stick to the RFC.
+			 */
+			*al = SSL_AD_MISSING_EXTENSION;
+
+			ereport(COMMERROR,
+					(errcode(ERRCODE_PROTOCOL_VIOLATION),
+					 errmsg("no hostname provided in callback")));
+			return SSL_CLIENT_HELLO_ERROR;
+		}
+	}
+
+	/*
+	 * If we reach here without a context chosen as the session context then
+	 * fail the handshake and terminate the connection.
+	 */
+	if (install_context == NULL)
+	{
+		if (tlsext_hostname)
+			*al = SSL_AD_UNRECOGNIZED_NAME;
+		else
+			*al = SSL_AD_MISSING_EXTENSION;
+		return SSL_CLIENT_HELLO_ERROR;
+	}
+
+found:
+	Host_context = install_context;
+	SSL_context = install_context->context;
+	if (SSL_set_SSL_CTX(ssl, SSL_context) == NULL)
+	{
+		ereport(COMMERROR,
+				errcode(ERRCODE_PROTOCOL_VIOLATION),
+				errmsg("failed to switch to SSL context for host"));
+		return SSL_CLIENT_HELLO_ERROR;
+	}
+
+	elog(LOG, "XXX: sni_clienthello_cb: context for %s installed", tlsext_hostname);
+	return SSL_CLIENT_HELLO_SUCCESS;
+}
+
 /*
  * sni_servername_cb
  *
@@ -1604,6 +1750,9 @@ sni_servername_cb(SSL *ssl, int *al, void *arg)
 {
 	const char *tlsext_hostname;
 	HostContext *install_context = NULL;
+
+	elog(LOG, "XXX: sni_servername_cb");
+	return SSL_TLSEXT_ERR_OK;
 
 	tlsext_hostname = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
 
@@ -1680,6 +1829,8 @@ found:
 				errmsg("failed to switch to SSL context for host"));
 		return SSL_TLSEXT_ERR_ALERT_FATAL;
 	}
+
+	elog(LOG, "XXX: sni_servername_cb: context for %s installed", tlsext_hostname);
 
 	return SSL_TLSEXT_ERR_OK;
 }

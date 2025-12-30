@@ -179,7 +179,7 @@ $node->restart;
 $node->connect_fails(
 	"$connstr sslrootcert=ssl/root+server_ca.crt sslmode=require sslsni=0",
 	"pg_hosts.conf: connect to default with sslmode=require",
-	expected_stderr => qr/missing extension/);
+	expected_stderr => qr/handshake failure/);
 $node->connect_fails(
 	"$connstr sslrootcert=ssl/root+server_ca.crt sslmode=require host=example.com",
 	"pg_hosts.conf: connect to default with sslmode=require",
@@ -293,7 +293,7 @@ $node->append_conf('pg_hosts.conf',
 # example.net uses the server CA (which is wrong).
 $node->append_conf('pg_hosts.conf',
 	'example.net server-cn-only.crt server-cn-only.key root+server_ca.crt');
-$node->reload;
+$node->restart;
 
 $connstr =
   "user=ssltestuser dbname=certdb hostaddr=$SERVERHOSTADDR sslmode=require sslsni=1";
@@ -303,7 +303,7 @@ $node->connect_fails(
 	"$connstr host=example.org sslcertmode=require sslcert=ssl/client.crt"
 	  . $ssl_server->sslkey('client.key'),
 	"host: 'example.org', ca: '': connect with sslcert, no client CA configured",
-	expected_stderr => qr/unknown ca/);
+	expected_stderr => qr/client certificates can only be checked if a root certificate store is available/);
 
 # example.com is configured and should require a valid client cert.
 $node->connect_fails(
@@ -312,7 +312,7 @@ $node->connect_fails(
 	expected_stderr => qr/connection requires a valid client certificate/);
 
 $node->connect_ok(
-	"$connstr host=example.com sslrootcert=ssl/root+server_ca.crt sslcertmode=require sslcert=ssl/client.crt "
+	"$connstr host=example.com sslcertmode=require sslcert=ssl/client.crt "
 	  . $ssl_server->sslkey('client.key'),
 	"host: 'example.com', ca: 'root+client_ca.crt': connect with sslcert, client certificate sent"
 );

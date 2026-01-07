@@ -79,7 +79,7 @@ static int	alpn_cb(SSL *ssl,
 					const unsigned char *in,
 					unsigned int inlen,
 					void *userdata);
-static int	sni_servername_cb(SSL *ssl, int *al, void *arg);
+/*static int	sni_servername_cb(SSL *ssl, int *al, void *arg);*/
 static int	sni_clienthello_cb(SSL *ssl, int *al, void *arg);
 static bool initialize_dh(SSL_CTX *context, bool isServerStart);
 static bool initialize_ecdh(SSL_CTX *context, bool isServerStart);
@@ -348,16 +348,6 @@ ssl_init_context(bool isServerStart, HostsLine *host_line)
 	SSL_CTX_set_mode(context, SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
 
 	/*
-	 * Install SNI TLS extension callback in order to validate hostnames in
-	 * case ssl_sni has been enabled.
-	 */
-	if (ssl_sni)
-	{
-		SSL_CTX_set_client_hello_cb(context, sni_clienthello_cb, NULL);
-		SSL_CTX_set_tlsext_servername_callback(context, sni_servername_cb);
-	}
-
-	/*
 	 * Call init hook (usually to set password callback)
 	 */
 	(*openssl_tls_init_hook) (context, isServerStart, host_line);
@@ -583,6 +573,13 @@ ssl_init_context(bool isServerStart, HostsLine *host_line)
 						   verify_cb);
 	}
 
+	/*
+	 * Install SNI TLS extension callback in order to validate hostnames in
+	 * case ssl_sni has been enabled.
+	 */
+	if (ssl_sni)
+		SSL_CTX_set_client_hello_cb(context, sni_clienthello_cb, NULL);
+
 	/*----------
 	 * Load the Certificate Revocation List (CRL).
 	 * http://searchsecurity.techtarget.com/sDefinition/0,,sid14_gci803160,00.html
@@ -672,6 +669,10 @@ be_tls_open_server(Port *port)
 
 	/* enable ALPN */
 	SSL_CTX_set_alpn_select_cb(SSL_context, alpn_cb, port);
+
+	SSL_CTX_set_verify(SSL_context,
+					   (SSL_VERIFY_PEER | SSL_VERIFY_CLIENT_ONCE),
+					   verify_cb);
 
 	if (!(port->ssl = SSL_new(SSL_context)))
 	{
@@ -1432,6 +1433,8 @@ verify_cb(int ok, X509_STORE_CTX *ctx)
 	SSL		   *ssl;
 	struct CallbackErr *cb_err;
 
+	elog(LOG, "XXX: verify_cb");
+
 	if (ok)
 	{
 		/* Nothing to do for the successful case. */
@@ -1613,10 +1616,8 @@ sni_clienthello_cb(SSL *ssl, int *al, void *arg)
 
 	if (SSL_client_hello_get0_ext(ssl, TLSEXT_TYPE_server_name, &tlsext, &left))
 	{
-		elog(LOG, "XXX: sni_clienthello_cb, parsing for TLSEXT_TYPE_server_name");
 		if (left <= 2)
 		{
-			elog(LOG, "XXX: sni_clienthello_cb 1");
 			*al = SSL_AD_MISSING_EXTENSION;
 			return 0;
 		}
@@ -1624,7 +1625,6 @@ sni_clienthello_cb(SSL *ssl, int *al, void *arg)
 		len += *(tlsext)++;
 		if (len + 2 != left)
 		{
-			elog(LOG, "XXX: sni_clienthello_cb 2");
 			*al = SSL_AD_MISSING_EXTENSION;
 			return 0;
 		}
@@ -1633,7 +1633,6 @@ sni_clienthello_cb(SSL *ssl, int *al, void *arg)
 
 		if (left == 0 || *tlsext++ != TLSEXT_NAMETYPE_host_name)
 		{
-			elog(LOG, "XXX: sni_clienthello_cb 3");
 			*al = SSL_AD_MISSING_EXTENSION;
 			return 0;
 		}
@@ -1643,7 +1642,6 @@ sni_clienthello_cb(SSL *ssl, int *al, void *arg)
 		/* Now we can finally pull out the byte array with the actual hostname. */
 		if (left <= 2)
 		{
-			elog(LOG, "XXX: sni_clienthello_cb 4");
 			*al = SSL_AD_MISSING_EXTENSION;
 			return 0;
 		}
@@ -1651,15 +1649,13 @@ sni_clienthello_cb(SSL *ssl, int *al, void *arg)
 		len += *(tlsext++);
 		if (len + 2 > left)
 		{
-			elog(LOG, "XXX: sni_clienthello_cb 5");
 			*al = SSL_AD_MISSING_EXTENSION;
 			return 0;
 		}
 		left = len;
 		tlsext_hostname = (const char *)tlsext;
 
-		elog(LOG, "XXX: sni_clienthello_cb: %s", tlsext_hostname);
-
+		elog(LOG, "XXX: sni_clienthello_cb: TLSEXT_TYPE_server_name: %s", tlsext_hostname);
 
 		/*
 		 * We have a requested hostname from the client, match against all
@@ -1705,7 +1701,7 @@ sni_clienthello_cb(SSL *ssl, int *al, void *arg)
 
 			ereport(COMMERROR,
 					(errcode(ERRCODE_PROTOCOL_VIOLATION),
-					 errmsg("no hostname provided in callback")));
+					 errmsg("no hostname provided in callback, and no fallback configured")));
 			return SSL_CLIENT_HELLO_ERROR;
 		}
 	}
@@ -1738,6 +1734,7 @@ found:
 	return SSL_CLIENT_HELLO_SUCCESS;
 }
 
+#if 0
 /*
  * sni_servername_cb
  *
@@ -1834,6 +1831,7 @@ found:
 
 	return SSL_TLSEXT_ERR_OK;
 }
+#endif
 
 /*
  * Set DH parameters for generating ephemeral DH keys.  The

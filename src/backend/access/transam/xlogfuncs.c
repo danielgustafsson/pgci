@@ -757,17 +757,12 @@ pg_promote(PG_FUNCTION_ARGS)
 Datum
 disable_data_checksums(PG_FUNCTION_ARGS)
 {
-	bool		fast = PG_GETARG_BOOL(0);
-
-	ereport(LOG,
-			errmsg("disable_data_checksums, fast: %d", fast));
-
 	if (!superuser())
 		ereport(ERROR,
 				errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				errmsg("must be superuser to change data checksum state"));
 
-	StartDataChecksumsWorkerLauncher(DISABLE_DATACHECKSUMS, 0, 0, fast);
+	StartDataChecksumsWorkerLauncher(DISABLE_DATACHECKSUMS, 0, 0);
 	PG_RETURN_VOID();
 }
 
@@ -781,10 +776,6 @@ enable_data_checksums(PG_FUNCTION_ARGS)
 {
 	int			cost_delay = PG_GETARG_INT32(0);
 	int			cost_limit = PG_GETARG_INT32(1);
-	bool		fast = PG_GETARG_BOOL(2);
-
-	ereport(LOG,
-			errmsg("enable_data_checksums, cost_delay: %d cost_limit: %d fast: %d", cost_delay, cost_limit, fast));
 
 	if (!superuser())
 		ereport(ERROR,
@@ -801,7 +792,7 @@ enable_data_checksums(PG_FUNCTION_ARGS)
 				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				errmsg("cost limit must be greater than zero"));
 
-	StartDataChecksumsWorkerLauncher(ENABLE_DATACHECKSUMS, cost_delay, cost_limit, fast);
+	StartDataChecksumsWorkerLauncher(ENABLE_DATACHECKSUMS, cost_delay, cost_limit);
 
 	PG_RETURN_VOID();
 }

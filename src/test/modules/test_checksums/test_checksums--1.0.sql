@@ -19,7 +19,7 @@ CREATE FUNCTION dcw_fake_temptable(attach boolean DEFAULT true)
 	RETURNS pg_catalog.void
 	AS 'MODULE_PATHNAME' LANGUAGE C;
 
-CREATE FUNCTION dc_crash_before_checkpoint(attach boolean DEFAULT true)
+CREATE FUNCTION dc_crash_after_checksum_enable(attach boolean DEFAULT true)
 	RETURNS pg_catalog.void
 	AS 'MODULE_PATHNAME' LANGUAGE C;
 

@@ -180,19 +180,19 @@ crash(const char *name, const void *private_data, void *arg)
 }
 
 /*
- * dc_crash_before_checkpoint
+ * dc_crash_after_checksum_enable
  *
  * Ensure that the server crashes just before the checkpoint is issued after
  * enabling or disabling checksums.
  */
-PG_FUNCTION_INFO_V1(dc_crash_before_checkpoint);
+PG_FUNCTION_INFO_V1(dc_crash_after_checksum_enable);
 Datum
-dc_crash_before_checkpoint(PG_FUNCTION_ARGS)
+dc_crash_after_checksum_enable(PG_FUNCTION_ARGS)
 {
 #ifdef USE_INJECTION_POINTS
-	InjectionPointAttach("datachecksums-enable-checksums-pre-checkpoint",
+	InjectionPointAttach("datachecksums-enable-checksums-done",
 						 "test_checksums", "crash", NULL, 0);
-	InjectionPointAttach("datachecksums-disable-checksums-pre-checkpoint",
+	InjectionPointAttach("datachecksums-disable-checksums-done",
 						 "test_checksums", "crash", NULL, 0);
 #else
 	elog(ERROR,

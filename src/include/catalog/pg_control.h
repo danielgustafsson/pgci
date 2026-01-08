@@ -64,8 +64,8 @@ typedef struct CheckPoint
 	 */
 	TransactionId oldestActiveXid;
 
-	/* data checksums at the time of the checkpoint  */
-	uint32		data_checksum_version;
+	/* data checksums state at the time of the checkpoint  */
+	uint32		dataChecksumVersion;
 } CheckPoint;
 
 /* XLOG info values for XLOG rmgr */
@@ -85,7 +85,7 @@ typedef struct CheckPoint
 #define XLOG_OVERWRITE_CONTRECORD		0xD0
 #define XLOG_CHECKPOINT_REDO			0xE0
 #define XLOG_LOGICAL_DECODING_STATUS_CHANGE	0xF0
-#define XLOG_CHECKSUMS					0xF1
+#define XLOG_CHECKSUMS					0xC0
 
 
 /*

@@ -183,8 +183,6 @@ for (my $i = 0; $i < $TEST_ITERATIONS; $i++)
 
 	if (!$node->is_alive)
 	{
-		random_sleep();
-
 		# Start, to do recovery, and stop
 		$node->start;
 		$node->stop('fast');

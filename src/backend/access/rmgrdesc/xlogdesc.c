@@ -55,6 +55,25 @@ get_wal_level_string(int wal_level)
 	return wal_level_str;
 }
 
+static const char *
+get_checksum_version_string(ChecksumType checksum)
+{
+	switch (checksum)
+	{
+		case PG_DATA_CHECKSUM_VERSION:
+			return "on";
+		case PG_DATA_CHECKSUM_INPROGRESS_OFF_VERSION:
+			return "inprogress-off";
+		case PG_DATA_CHECKSUM_INPROGRESS_ON_VERSION:
+			return "inprogress-on";
+		case PG_DATA_CHECKSUM_OFF:
+			return "off";
+	}
+
+	Assert(false);
+	return "?";
+}
+
 void
 xlog_desc(StringInfo buf, XLogReaderState *record)
 {
@@ -70,7 +89,8 @@ xlog_desc(StringInfo buf, XLogReaderState *record)
 						 "tli %u; prev tli %u; fpw %s; wal_level %s; logical decoding %s; xid %u:%u; oid %u; multi %u; offset %" PRIu64 "; "
 						 "oldest xid %u in DB %u; oldest multi %u in DB %u; "
 						 "oldest/newest commit timestamp xid: %u/%u; "
-						 "oldest running xid %u; %s",
+						 "oldest running xid %u; "
+						 "checksums %s; %s",
 						 LSN_FORMAT_ARGS(checkpoint->redo),
 						 checkpoint->ThisTimeLineID,
 						 checkpoint->PrevTimeLineID,
@@ -89,6 +109,7 @@ xlog_desc(StringInfo buf, XLogReaderState *record)
 						 checkpoint->oldestCommitTsXid,
 						 checkpoint->newestCommitTsXid,
 						 checkpoint->oldestActiveXid,
+						 get_checksum_version_string(checkpoint->dataChecksumVersion),
 						 (info == XLOG_CHECKPOINT_SHUTDOWN) ? "shutdown" : "online");
 	}
 	else if (info == XLOG_NEXTOID)
@@ -164,10 +185,12 @@ xlog_desc(StringInfo buf, XLogReaderState *record)
 	}
 	else if (info == XLOG_CHECKPOINT_REDO)
 	{
-		int			wal_level;
+		xl_checkpoint_redo xlrec;
 
-		memcpy(&wal_level, rec, sizeof(int));
-		appendStringInfo(buf, "wal_level %s", get_wal_level_string(wal_level));
+		memcpy(&xlrec, rec, sizeof(xl_checkpoint_redo));
+		appendStringInfo(buf, "wal_level %s; checksums %s",
+						 get_wal_level_string(xlrec.wal_level),
+						 get_checksum_version_string(xlrec.data_checksum_version));
 	}
 	else if (info == XLOG_LOGICAL_DECODING_STATUS_CHANGE)
 	{
@@ -181,20 +204,7 @@ xlog_desc(StringInfo buf, XLogReaderState *record)
 		xl_checksum_state xlrec;
 
 		memcpy(&xlrec, rec, sizeof(xl_checksum_state));
-		switch (xlrec.new_checksumtype)
-		{
-			case PG_DATA_CHECKSUM_VERSION:
-				appendStringInfoString(buf, "on");
-				break;
-			case PG_DATA_CHECKSUM_INPROGRESS_OFF_VERSION:
-				appendStringInfoString(buf, "inprogress-off");
-				break;
-			case PG_DATA_CHECKSUM_INPROGRESS_ON_VERSION:
-				appendStringInfoString(buf, "inprogress-on");
-				break;
-			default:
-				appendStringInfoString(buf, "off");
-		}
+		appendStringInfoString(buf, get_checksum_version_string(xlrec.new_checksumtype));
 	}
 }
 

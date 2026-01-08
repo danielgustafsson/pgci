@@ -43,53 +43,8 @@ $node->safe_psql('postgres', 'SELECT dcw_inject_fail_database(true);');
 enable_data_checksums($node, wait => 'off');
 $node->safe_psql('postgres', 'SELECT dcw_inject_fail_database(false);');
 
-# Force the server to crash after enabling data checksums but before issuing
-# the checkpoint.  Since the switch has been WAL logged the server should come
-# up with checksums enabled after replay.
-test_checksum_state($node, 'off');
-$node->safe_psql('postgres', 'SELECT dc_crash_before_checkpoint();');
-enable_data_checksums($node, fast => 'true');
-my $ret = wait_for_cluster_crash($node);
-ok($ret == 1, "Cluster crash detection timeout");
-ok(!$node->is_alive, "Cluster crashed due to abort() before checkpointing");
-$node->_update_pid(-1);
-$node->start;
-test_checksum_state($node, 'on');
-
-# Another test just like the previous, but for disabling data checksums (and
-# crashing just before checkpointing).  The previous injection points were all
-# detached from through the crash so they need to be reattached.
-$node->safe_psql('postgres', 'SELECT dc_crash_before_checkpoint();');
+# Make sure that disabling after a failure works
 disable_data_checksums($node);
-$ret = wait_for_cluster_crash($node);
-ok($ret == 1, "Cluster crash detection timeout");
-ok(!$node->is_alive, "Cluster crashed due to abort() before checkpointing");
-$node->_update_pid(-1);
-$node->start;
-test_checksum_state($node, 'off');
-
-# Now inject a crash before inserting the WAL record for data checksum state
-# change, when the server comes back up again the state should not have been
-# set to the new value since the process didn't succeed.
-$node->safe_psql('postgres', 'SELECT dc_crash_before_xlog();');
-enable_data_checksums($node);
-$ret = wait_for_cluster_crash($node);
-ok($ret == 1, "Cluster crash detection timeout");
-ok(!$node->is_alive, "Cluster crashed");
-$node->_update_pid(-1);
-$node->start;
-test_checksum_state($node, 'off');
-
-# This re-runs the same test again but with first disabling data checksums and
-# then enabling again, crashing right before inserting the WAL record.  When
-# it comes back up the checksums must not be enabled.
-$node->safe_psql('postgres', 'SELECT dc_crash_before_xlog();');
-enable_data_checksums($node);
-$ret = wait_for_cluster_crash($node);
-ok($ret == 1, "Cluster crash detection timeout");
-ok(!$node->is_alive, "Cluster crashed");
-$node->_update_pid(-1);
-$node->start;
 test_checksum_state($node, 'off');
 
 # ---------------------------------------------------------------------------

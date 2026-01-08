@@ -293,7 +293,7 @@ typedef struct xl_restore_point
 /* Information logged when data checksum level is changed */
 typedef struct xl_checksum_state
 {
-	uint32		new_checksumtype;
+	ChecksumType		new_checksumtype;
 } xl_checksum_state;
 
 /* Overwrite of prior contrecord */
@@ -311,6 +311,12 @@ typedef struct xl_end_of_recovery
 	TimeLineID	PrevTimeLineID; /* previous TLI we forked off from */
 	int			wal_level;
 } xl_end_of_recovery;
+
+typedef struct xl_checkpoint_redo
+{
+	int			wal_level;
+	uint32		data_checksum_version;
+} xl_checkpoint_redo;
 
 /*
  * The functions in xloginsert.c construct a chain of XLogRecData structs

@@ -12408,20 +12408,13 @@
 # data checksum management functions
 { oid => '9258',
   descr => 'disable data checksums',
-  proname => 'pg_disable_data_checksums', provolatile => 'v', prorettype => 'void',
-  proparallel => 'r',
-  proargtypes => 'bool', proallargtypes => '{bool}',
-  proargmodes => '{i}',
-  proargnames => '{fast}',
-  prosrc => 'disable_data_checksums' },
-
+  proname => 'pg_disable_data_checksums', provolatile => 's', prorettype => 'void',
+  proparallel => 'r', prosrc => 'disable_data_checksums', proargtypes => '' },
 { oid => '9257',
   descr => 'enable data checksums',
   proname => 'pg_enable_data_checksums', provolatile => 'v', prorettype => 'void',
-  proparallel => 'r',
-  proargtypes => 'int4 int4 bool', proallargtypes => '{int4,int4,bool}',
-  proargmodes => '{i,i,i}',
-  proargnames => '{cost_delay,cost_limit,fast}',
+  proparallel => 'r', proargtypes => 'int4 int4', proallargtypes => '{int4,int4}',
+  proargmodes => '{i,i}', proargnames => '{cost_delay,cost_limit}',
   prosrc => 'enable_data_checksums' },
 
 # collation management functions

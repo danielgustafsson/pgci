@@ -1391,9 +1391,8 @@ CREATE VIEW pg_stat_progress_data_checksums AS
         CASE S.param1 WHEN 0 THEN 'enabling'
                       WHEN 1 THEN 'disabling'
                       WHEN 2 THEN 'waiting on temporary tables'
-                      WHEN 3 THEN 'waiting on checkpoint'
-					  WHEN 4 THEN 'waiting on barrier'
-                      WHEN 5 THEN 'done'
+					  WHEN 3 THEN 'waiting on barrier'
+                      WHEN 4 THEN 'done'
                       END AS phase,
         CASE S.param2 WHEN -1 THEN NULL ELSE S.param2 END AS databases_total,
         S.param3 AS databases_done,

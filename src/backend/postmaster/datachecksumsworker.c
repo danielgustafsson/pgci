@@ -14,34 +14,42 @@
  * Checksums can be either enabled or disabled cluster-wide, with on/off being
  * the end state for data_checksums.
  *
- * Enabling checksums
- * ------------------
+ * 1. Enabling checksums
+ * ---------------------
  * When enabling checksums in an online cluster, data_checksums will be set to
  * "inprogress-on" which signals that write operations MUST compute and write
  * the checksum on the data page, but during reading the checksum SHALL NOT be
- * verified. This ensures that all objects created during checksumming will
- * have checksums set, but no reads will fail due to incorrect checksum. The
- * DataChecksumsWorker will compile a list of databases which exist at the
- * start of checksumming, and all of these which haven't been dropped during
- * the processing MUST have been processed successfully in order for checksums
- * to be enabled. Any new relation created during processing will see the
- * in-progress state and will automatically be checksummed.
+ * verified. This ensures that all objects created during when checksums are
+ * being enabled will have checksums set, but reads wont fail due to missing or
+ * invalid checksums. Invalid checksums can be present in case the cluster had
+ * checksums enabled, then disabled them and updated the page while they were
+ * disabled.
+ *
+ * The DataChecksumsWorker will compile a list of databases which exist at the
+ * start of checksumming, and once all are processed will regenerate the list
+ * and start over processing any new entries. Once there are no new entries on
+ * the list, processing will end.  All databases MUST BE successfully processed
+ * in order for data checksums to be enabled, the only exception are databases
+ * which are dropped before having been processed.
+
+ * Any new relation in a processed database, created during processing, will
+ * see the in-progress state and will automatically be checksummed.
  *
  * For each database, all relations which have storage are read and every data
  * page is marked dirty to force a write with the checksum. This will generate
  * a lot of WAL as the entire database is read and written.
  *
- * If the processing is interrupted by a cluster restart, it will be restarted
- * from the beginning again as state isn't persisted.
+ * If the processing is interrupted by a cluster crash or restart, it needs to
+ * be restarted from the beginning again as state isn't persisted.
  *
- * Disabling checksums
+ * 2. Disabling checksums
  * -------------------
  * When disabling checksums, data_checksums will be set to "inprogress-off"
  * which signals that checksums are written but no longer verified. This ensure
  * that backends which have yet to move from the "on" state will still be able
  * to process data checksum validation.
  *
- * Synchronization and Correctness
+ * 3. Synchronization and Correctness
  * -------------------------------
  * The processes involved in enabling, or disabling, data checksums in an
  * online cluster must be properly synchronized with the normal backends
@@ -57,7 +65,7 @@
  *      backends must wait on the procsignalbarrier to be acknowledged by all
  *      before proceeding to validate data checksums.
  *
- * There are two levels of synchronization required for changing data_checksums
+ * There are two steps of synchronization required for changing data_checksums
  * in an online cluster: (i) changing state in the active backends ("on",
  * "off", "inprogress-on" and "inprogress-off"), and (ii) ensuring no
  * incompatible objects and processes are left in a database when workers end.
@@ -73,73 +81,80 @@
  * writing and verifying checksums, interrupts shall be held off before
  * interrogating state and resumed when the IO operation has been performed.
  *
- *   When Enabling Data Checksums
- *   ----------------------------
- *   A process which fails to observe data checksums being enabled can induce
- *   two types of errors: failing to write the checksum when modifying the page
- *   and failing to validate the data checksum on the page when reading it.
+ * 3.1 When Enabling Data Checksums
+ * --------------------------------
+ * A process which fails to observe data checksums being enabled can induce two
+ * types of errors: failing to write the checksum when modifying the page and
+ * failing to validate the data checksum on the page when reading it.
  *
- *   When processing starts all backends belong to one of the below sets, with
- *   one set being empty:
+ * When processing starts all backends belong to one of the below sets, with
+ * one set being empty:
  *
- *   Bd: Backends in "off" state
- *   Bi: Backends in "inprogress-on" state
+ * Bd: Backends in "off" state
+ * Bi: Backends in "inprogress-on" state
  *
- *   If processing is started in an online cluster then all backends are in Bd.
- *   If processing was halted by the cluster shutting down, the controlfile
- *   state "inprogress-on" will be observed on system startup and all backends
- *   will be placed in Bd. Backends transition Bd -> Bi via a procsignalbarrier
- *   which is emitted by the DataChecksumsLauncher.  When all backends have
- *   acknowledged the barrier then Bd will be empty and the next phase can
- *   begin: calculating and writing data checksums with DataChecksumsWorkers.
- *   When the DataChecksumsWorker processes have finished writing checksums on
- *   all pages and enables data checksums cluster-wide via another
- *   procsignalbarrier, there are four sets of backends where Bd shall be an
- *   empty set:
+ * If processing is started in an online cluster then all backends are in Bd.
+ * If processing was halted by the cluster shutting down (due to a crash or
+ * intentional restart), the controlfile state "inprogress-on" will be observed
+ * on system startup and all backends will be placed in Bd. The controlfile
+ * state will also be set of "off".
  *
- *   Bg: Backend updating the global state and emitting the procsignalbarrier
- *   Bd: Backends in "off" state
- *   Be: Backends in "on" state
- *   Bi: Backends in "inprogress-on" state
+ * Backends transition Bd -> Bi via a procsignalbarrier which is emitted by the
+ * DataChecksumsLauncher.  When all backends have acknowledged the barrier then
+ * Bd will be empty and the next phase can begin: calculating and writing data
+ * checksums with DataChecksumsWorkers.  When the DataChecksumsWorker processes
+ * have finished writing checksums on all pages, data checksums are enabled
+ * cluster-wide via another procsignalbarrier. There are four sets of backends
+ * where Bd shall be an empty set:
  *
- *   Backends in Bi and Be will write checksums when modifying a page, but only
- *   backends in Be will verify the checksum during reading. The Bg backend is
- *   blocked waiting for all backends in Bi to process interrupts and move to
- *   Be. Any backend starting while Bg is waiting on the procsignalbarrier will
- *   observe the global state being "on" and will thus automatically belong to
- *   Be.  Checksums are enabled cluster-wide when Bi is an empty set. Bi and Be
- *   are compatible sets while still operating based on their local state as
- *   both write data checksums.
+ * Bg: Backend updating the global state and emitting the procsignalbarrier
+ * Bd: Backends in "off" state
+ * Be: Backends in "on" state
+ * Bi: Backends in "inprogress-on" state
  *
- *   When Disabling Data Checksums
- *   -----------------------------
- *   A process which fails to observe that data checksums have been disabled
- *   can induce two types of errors: writing the checksum when modifying the
- *   page and validating a data checksum which is no longer correct due to
- *   modifications to the page.
+ * Backends in Bi and Be will write checksums when modifying a page, but only
+ * backends in Be will verify the checksum during reading. The Bg backend is
+ * blocked waiting for all backends in Bi to process interrupts and move to
+ * Be. Any backend starting while Bg is waiting on the procsignalbarrier will
+ * observe the global state being "on" and will thus automatically belong to
+ * Be.  Checksums are enabled cluster-wide when Bi is an empty set. Bi and Be
+ * are compatible sets while still operating based on their local state as
+ * both write data checksums.
  *
- *   Bg: Backend updating the global state and emitting the procsignalbarrier
- *   Bd: Backends in "off" state
- *   Be: Backends in "on" state
- *   Bo: Backends in "inprogress-off" state
+ * 3.2 When Disabling Data Checksums
+ * ---------------------------------
+ * A process which fails to observe that data checksums have been disabled
+ * can induce two types of errors: writing the checksum when modifying the
+ * page and validating a data checksum which is no longer correct due to
+ * modifications to the page. The former is not an error per se as data
+ * integrity is maintained, but it is wasteful.  The latter will cause errors
+ * in user operations.  Assuming the following sets of backends:
  *
- *   Backends transition from the Be state to Bd like so: Be -> Bo -> Bd
+ * Bg: Backend updating the global state and emitting the procsignalbarrier
+ * Bd: Backends in "off" state
+ * Be: Backends in "on" state
+ * Bo: Backends in "inprogress-off" state
+ * Bi: Backends in "inprogress-on" state
  *
- *   The goal is to transition all backends to Bd making the others empty sets.
- *   Backends in Bo write data checksums, but don't validate them, such that
- *   backends still in Be can continue to validate pages until the barrier has
- *   been absorbed such that they are in Bo. Once all backends are in Bo, the
- *   barrier to transition to "off" can be raised and all backends can safely
- *   stop writing data checksums as no backend is enforcing data checksum
- *   validation any longer.
+ * Backends transition from the Be state to Bd like so: Be -> Bo -> Bd.  From
+ * all other states, the transition can be straight to Bd.
  *
- * Potential optimizations
- * -----------------------
+ * The goal is to transition all backends to Bd making the others empty sets.
+ * Backends in Bo write data checksums, but don't validate them, such that
+ * backends still in Be can continue to validate pages until the barrier has
+ * been absorbed such that they are in Bo. Once all backends are in Bo, the
+ * barrier to transition to "off" can be raised and all backends can safely
+ * stop writing data checksums as no backend is enforcing data checksum
+ * validation any longer.
+ *
+ * 4. Future opportunities for optimizations
+ * -----------------------------------------
  * Below are some potential optimizations and improvements which were brought
  * up during reviews of this feature, but which weren't implemented in the
  * initial version. These are ideas listed without any validation on their
- * feasibility or potential payoff. More discussion on these can be found on
- * the -hackers threads linked to in the commit message of this feature.
+ * feasibility or potential payoff. More discussion on (most of) these can be
+ * found on the -hackers threads linked to in the commit message of this
+ * feature.
  *
  *   * Launching datachecksumsworker for resuming operation from the startup
  *     process: Currently users have to restart processing manually after a
@@ -157,6 +172,8 @@
  *     may have checksummed pages (make pg_checksums be able to resume an
  *     online operation).
  *   * Restartability (not necessarily with page granularity).
+ *   * Avoid processing databases which were created during inprogress-on.
+ *     Right now all databases are processed regardless to be safe.
  *
  *
  * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
@@ -221,7 +238,6 @@ typedef struct DataChecksumsWorkerShmemStruct
 	DataChecksumsWorkerOperation launch_operation;
 	int			launch_cost_delay;
 	int			launch_cost_limit;
-	bool		launch_fast;
 
 	/*
 	 * Is a launcher process is currently running?
@@ -245,7 +261,6 @@ typedef struct DataChecksumsWorkerShmemStruct
 	DataChecksumsWorkerOperation operation;
 	int			cost_delay;
 	int			cost_limit;
-	bool		immediate_checkpoint;
 
 	/*
 	 * Signaling between the launcher and the worker process.
@@ -304,7 +319,7 @@ static List *BuildDatabaseList(void);
 static List *BuildRelationList(bool temp_relations, bool include_shared);
 static void FreeDatabaseList(List *dblist);
 static DataChecksumsWorkerResult ProcessDatabase(DataChecksumsWorkerDatabase *db);
-static bool ProcessAllDatabases(bool immediate_checkpoint);
+static bool ProcessAllDatabases(void);
 static bool ProcessSingleRelationFork(Relation reln, ForkNumber forkNum, BufferAccessStrategy strategy);
 static void launcher_cancel_handler(SIGNAL_ARGS);
 static void WaitForAllTransactionsToFinish(void);
@@ -319,8 +334,7 @@ static void WaitForAllTransactionsToFinish(void);
 void
 StartDataChecksumsWorkerLauncher(DataChecksumsWorkerOperation op,
 								 int cost_delay,
-								 int cost_limit,
-								 bool fast)
+								 int cost_limit)
 {
 	BackgroundWorker bgw;
 	BackgroundWorkerHandle *bgw_handle;
@@ -338,7 +352,6 @@ StartDataChecksumsWorkerLauncher(DataChecksumsWorkerOperation op,
 	DataChecksumsWorkerShmem->launch_operation = op;
 	DataChecksumsWorkerShmem->launch_cost_delay = cost_delay;
 	DataChecksumsWorkerShmem->launch_cost_limit = cost_limit;
-	DataChecksumsWorkerShmem->launch_fast = fast;
 
 	/* is the launcher already running? */
 	launcher_running = DataChecksumsWorkerShmem->launcher_running;
@@ -384,6 +397,9 @@ StartDataChecksumsWorkerLauncher(DataChecksumsWorkerOperation op,
 					errcode(ERRCODE_INSUFFICIENT_RESOURCES),
 					errmsg("failed to start background worker to process data checksums"));
 	}
+	else
+		ereport(ERROR,
+				errmsg("data checksum processing already running"));
 }
 
 /*
@@ -409,15 +425,7 @@ ProcessSingleRelationFork(Relation reln, ForkNumber forkNum, BufferAccessStrateg
 	snprintf(activity, sizeof(activity) - 1, "processing: %s.%s (%s, %dblocks)",
 			 relns, RelationGetRelationName(reln), forkNames[forkNum], numblocks);
 	pgstat_report_activity(STATE_RUNNING, activity);
-
-	/*
-	 * As of now we only update the block counter for main forks in order to
-	 * not cause too frequent calls. TODO: investigate whether we should do it
-	 * more frequent?
-	 */
-	if (forkNum == MAIN_FORKNUM)
-		pgstat_progress_update_param(PROGRESS_DATACHECKSUMS_BLOCKS_TOTAL,
-									 numblocks);
+	pgstat_progress_update_param(PROGRESS_DATACHECKSUMS_BLOCKS_TOTAL, numblocks);
 
 	/*
 	 * We are looping over the blocks which existed at the time of process
@@ -633,8 +641,9 @@ ProcessDatabase(DataChecksumsWorkerDatabase *db)
  * launcher_exit
  *
  * Internal routine for cleaning up state when the launcher process exits. We
- * need to clean up the abort flag to ensure that processing can be restarted
- * again after it was previously aborted.
+ * need to clean up the abort flag to ensure that processing started again if
+ * it was previously aborted (note: started again, *not* restarted from where
+ * it left off).
  */
 static void
 launcher_exit(int code, Datum arg)
@@ -780,7 +789,6 @@ DataChecksumsWorkerLauncherMain(Datum arg)
 	DataChecksumsWorkerShmem->operation = operation;
 	DataChecksumsWorkerShmem->cost_delay = DataChecksumsWorkerShmem->launch_cost_delay;
 	DataChecksumsWorkerShmem->cost_limit = DataChecksumsWorkerShmem->launch_cost_limit;
-	DataChecksumsWorkerShmem->immediate_checkpoint = DataChecksumsWorkerShmem->launch_fast;
 	LWLockRelease(DataChecksumsWorkerLock);
 
 	/*
@@ -801,26 +809,21 @@ again:
 		 * checksums enabled, exit immediately as there is nothing more to do.
 		 * Hold interrupts to make sure state doesn't change during checking.
 		 */
-		HOLD_INTERRUPTS();
 		if (DataChecksumsNeedVerify())
-		{
-			RESUME_INTERRUPTS();
 			goto done;
-		}
-		RESUME_INTERRUPTS();
 
 		/*
 		 * Set the state to inprogress-on and wait on the procsignal barrier.
 		 */
 		pgstat_progress_update_param(PROGRESS_DATACHECKSUMS_PHASE,
 									 PROGRESS_DATACHECKSUMS_PHASE_ENABLING);
-		SetDataChecksumsOnInProgress(DataChecksumsWorkerShmem->immediate_checkpoint);
+		SetDataChecksumsOnInProgress();
 
 		/*
 		 * All backends are now in inprogress-on state and are writing data
 		 * checksums.  Start processing all data at rest.
 		 */
-		if (!ProcessAllDatabases(DataChecksumsWorkerShmem->immediate_checkpoint))
+		if (!ProcessAllDatabases())
 		{
 			/*
 			 * If the target state changed during processing then it's not a
@@ -842,20 +845,13 @@ again:
 		 * Data checksums have been set on all pages, set the state to on in
 		 * order to instruct backends to validate checksums on reading.
 		 */
-		SetDataChecksumsOn(DataChecksumsWorkerShmem->immediate_checkpoint);
+		SetDataChecksumsOn();
 	}
 	else if (operation == DISABLE_DATACHECKSUMS)
 	{
-		int			flags;
-
 		pgstat_progress_update_param(PROGRESS_DATACHECKSUMS_PHASE,
 									 PROGRESS_DATACHECKSUMS_PHASE_DISABLING);
-		SetDataChecksumsOff(DataChecksumsWorkerShmem->immediate_checkpoint);
-
-		flags = CHECKPOINT_FORCE | CHECKPOINT_WAIT;
-		if (DataChecksumsWorkerShmem->immediate_checkpoint)
-			flags = flags | CHECKPOINT_FAST;
-		RequestCheckpoint(flags);
+		SetDataChecksumsOff();
 	}
 	else
 	{
@@ -903,18 +899,14 @@ done:
  * checksums. Until no new databases are found, this will loop around computing
  * a new list and comparing it to the already seen ones.
  *
- * If immediate_checkpoint is set to true then a CHECKPOINT_FAST will be
- * issued. This is useful for testing but should be avoided in production use
- * as it may affect cluster performance drastically.
  */
 static bool
-ProcessAllDatabases(bool immediate_checkpoint)
+ProcessAllDatabases(void)
 {
 	List	   *DatabaseList;
 	HTAB	   *ProcessedDatabases = NULL;
 	HASHCTL		hash_ctl;
 	bool		found_failed = false;
-	int			flags;
 
 	/* Initialize a hash tracking all processed databases */
 	memset(&hash_ctl, 0, sizeof(hash_ctl));
@@ -1109,34 +1101,12 @@ ProcessAllDatabases(bool immediate_checkpoint)
 	if (found_failed)
 	{
 		/* Disable checksums on cluster, because we failed */
-		SetDataChecksumsOff(DataChecksumsWorkerShmem->immediate_checkpoint);
-		/* Force a checkpoint to make everything consistent */
-		flags = CHECKPOINT_FORCE | CHECKPOINT_WAIT;
-		if (immediate_checkpoint)
-			flags = flags | CHECKPOINT_FAST;
-		RequestCheckpoint(flags);
+		SetDataChecksumsOff();
 		ereport(ERROR,
 				errcode(ERRCODE_INSUFFICIENT_RESOURCES),
 				errmsg("data checksums failed to get enabled in all databases, aborting"),
 				errhint("The server log might have more information on the cause of the error."));
 	}
-
-	/*
-	 * When enabling checksums, we have to wait for a checkpoint for the
-	 * checksums to change from in-progress to on.
-	 */
-	pgstat_progress_update_param(PROGRESS_DATACHECKSUMS_PHASE,
-								 PROGRESS_DATACHECKSUMS_PHASE_WAITING_CHECKPOINT);
-
-	/*
-	 * Force a checkpoint to get everything out to disk. The use of immediate
-	 * checkpoints is for running tests, as they would otherwise not execute
-	 * in such a way that they can reliably be placed under timeout control.
-	 */
-	flags = CHECKPOINT_FORCE | CHECKPOINT_WAIT;
-	if (immediate_checkpoint)
-		flags = flags | CHECKPOINT_FAST;
-	RequestCheckpoint(flags);
 
 	pgstat_progress_update_param(PROGRESS_DATACHECKSUMS_PHASE,
 								 PROGRESS_DATACHECKSUMS_PHASE_WAITING_BARRIER);
@@ -1183,7 +1153,6 @@ DataChecksumsWorkerShmemInit(void)
 		 */
 		DataChecksumsWorkerShmem->launch_operation = false;
 		DataChecksumsWorkerShmem->launcher_running = false;
-		DataChecksumsWorkerShmem->launch_fast = false;
 	}
 }
 

@@ -149,12 +149,6 @@ The B<cost_delay> to use when enabling data checksums, default is 0.
 
 The B<cost_limit> to use when enabling data checksums, default is 100.
 
-=item fast
-
-If set to C<true> an immediate checkpoint will be issued after data
-checksums are enabled.  Setting this to false will lead to slower tests.
-The default is C<true>.
-
 =item wait
 
 If defined, the function will wait for the state defined in this parameter,
@@ -173,16 +167,15 @@ sub enable_data_checksums
 	# Set sane defaults for the parameters
 	$params{cost_delay} = 0 unless (defined($params{cost_delay}));
 	$params{cost_limit} = 100 unless (defined($params{cost_limit}));
-	$params{fast} = 'true' unless (defined($params{fast}));
 
 	my $query = <<'EOQ';
-SELECT pg_enable_data_checksums(%s, %s, %s);
+SELECT pg_enable_data_checksums(%s, %s);
 EOQ
 
 	$postgresnode->safe_psql(
 		'postgres',
 		sprintf($query,
-			$params{cost_delay}, $params{cost_limit}, $params{fast}));
+			$params{cost_delay}, $params{cost_limit}));
 
 	wait_for_checksum_state($postgresnode, $params{wait})
 	  if (defined($params{wait}));
@@ -201,13 +194,6 @@ waiting timing out, before returning.  The function will wait for
 $PostgreSQL::Test::Utils::timeout_default seconds before timing out.
 Unlike in C<enable_data_checksums> the value of the parameter is discarded.
 
-=over
-
-=item fast
-
-If set to C<true> the checkpoint after disabling will be set to immediate, else
-it will be deferred.  The default if no value is set is B<true>.
-
 =back
 
 =cut
@@ -217,14 +203,7 @@ sub disable_data_checksums
 	my $postgresnode = shift;
 	my %params = @_;
 
-	# Set sane defaults for the parameters
-	$params{fast} = 'true' unless (defined($params{fast}));
-
-	my $query = <<'EOQ';
-SELECT pg_disable_data_checksums(%s);
-EOQ
-
-	$postgresnode->safe_psql('postgres', sprintf($query, $params{fast}));
+	$postgresnode->safe_psql('postgres', 'SELECT pg_disable_data_checksums();');
 
 	wait_for_checksum_state($postgresnode, 'off') if (defined($params{wait}));
 }

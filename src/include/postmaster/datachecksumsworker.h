@@ -41,8 +41,7 @@ typedef enum
 /* Start the background processes for enabling or disabling checksums */
 void		StartDataChecksumsWorkerLauncher(DataChecksumsWorkerOperation op,
 											 int cost_delay,
-											 int cost_limit,
-											 bool fast);
+											 int cost_limit);
 
 /* Background worker entrypoints */
 void		DataChecksumsWorkerLauncherMain(Datum arg);

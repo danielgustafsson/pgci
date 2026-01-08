@@ -670,10 +670,6 @@ be_tls_open_server(Port *port)
 	/* enable ALPN */
 	SSL_CTX_set_alpn_select_cb(SSL_context, alpn_cb, port);
 
-	SSL_CTX_set_verify(SSL_context,
-					   (SSL_VERIFY_PEER | SSL_VERIFY_CLIENT_ONCE),
-					   verify_cb);
-
 	if (!(port->ssl = SSL_new(SSL_context)))
 	{
 		ereport(COMMERROR,

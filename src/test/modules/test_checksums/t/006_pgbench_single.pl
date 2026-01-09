@@ -16,10 +16,10 @@ use lib $FindBin::RealBin;
 
 use DataChecksums::Utils;
 
-if (!$ENV{PG_TEST_EXTRA} || $ENV{PG_TEST_EXTRA} !~ /\bchecksum_extended\b/)
-{
-	plan skip_all => 'Extended tests not enabled';
-}
+#if (!$ENV{PG_TEST_EXTRA} || $ENV{PG_TEST_EXTRA} !~ /\bchecksum_extended\b/)
+#{
+#	plan skip_all => 'Extended tests not enabled';
+#}
 
 if ($ENV{enable_injection_points} ne 'yes')
 {

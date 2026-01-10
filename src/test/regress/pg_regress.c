@@ -901,11 +901,17 @@ initialize_environment(void)
 		pgport = getenv("PGPORT");
 		if (!pghost)
 		{
-			/* Keep this bit in sync with libpq's default host location: */
-			if (DEFAULT_PGSOCKET_DIR[0])
-				 /* do nothing, we'll print "Unix socket" below */ ;
+			sockdir = getenv("PG_REGRESS_SOCK_DIR");
+			if (sockdir)
+				setenv("PGHOST", sockdir, 1);
 			else
-				pghost = "localhost";	/* DefaultHost in fe-connect.c */
+			{
+				/* Keep this bit in sync with libpq's default host location: */
+				if (DEFAULT_PGSOCKET_DIR[0])
+					 /* do nothing, we'll print "Unix socket" below */ ;
+				else
+					pghost = "localhost";	/* DefaultHost in fe-connect.c */
+			}
 		}
 
 		if (pghost && pgport)
@@ -2582,7 +2588,7 @@ regression_main(int argc, char *argv[],
 		 * Using an existing installation, so may need to get rid of
 		 * pre-existing database(s) and role(s)
 		 */
-		if (!use_existing)
+		if (use_existing)
 		{
 			for (sl = dblist; sl; sl = sl->next)
 				drop_database_if_exists(sl->str);
@@ -2594,13 +2600,10 @@ regression_main(int argc, char *argv[],
 	/*
 	 * Create the test database(s) and role(s)
 	 */
-	if (!use_existing)
-	{
-		for (sl = dblist; sl; sl = sl->next)
-			create_database(sl->str);
-		for (sl = extraroles; sl; sl = sl->next)
-			create_role(sl->str, dblist);
-	}
+	for (sl = dblist; sl; sl = sl->next)
+		create_database(sl->str);
+	for (sl = extraroles; sl; sl = sl->next)
+		create_role(sl->str, dblist);
 
 	/*
 	 * Ready to run the tests

@@ -79,7 +79,6 @@ static int	alpn_cb(SSL *ssl,
 					const unsigned char *in,
 					unsigned int inlen,
 					void *userdata);
-/*static int	sni_servername_cb(SSL *ssl, int *al, void *arg);*/
 static int	sni_clienthello_cb(SSL *ssl, int *al, void *arg);
 static bool initialize_dh(SSL_CTX *context, bool isServerStart);
 static bool initialize_ecdh(SSL_CTX *context, bool isServerStart);
@@ -139,11 +138,11 @@ be_tls_init(bool isServerStart)
 	/*
 	 * If ssl_sni is enabled, attempt to load and parse TLS configuration from
 	 * the pg_hosts.conf file with the set of hosts returned as a list.  If
-	 * there are hosts configured they take precedence over the postgresql.conf
-	 * config.  Make sure to allocate the parsed rows in a temporary memory
-	 * context so that we can avoid memory leaks from the parsing process.  If
-	 * ssl_sni is disabled then set the state accordingly to make sure we
-	 * instead parse the config from postgresql.conf.
+	 * there are hosts configured they take precedence over the
+	 * postgresql.conf config.  Make sure to allocate the parsed rows in a
+	 * temporary memory context so that we can avoid memory leaks from the
+	 * parsing process.  If ssl_sni is disabled then set the state accordingly
+	 * to make sure we instead parse the config from postgresql.conf.
 	 */
 	if (ssl_sni)
 	{
@@ -564,9 +563,9 @@ ssl_init_context(bool isServerStart, HostsLine *host_line)
 		SSL_CTX_set_client_CA_list(context, root_cert_list);
 
 		/*
-		 * Always ask for SSL client cert, but don't fail if it's not presented.
-		 * We might fail such connections later, depending on what we find in
-		 * pg_hba.conf.
+		 * Always ask for SSL client cert, but don't fail if it's not
+		 * presented. We might fail such connections later, depending on what
+		 * we find in pg_hba.conf.
 		 */
 		SSL_CTX_set_verify(context,
 						   (SSL_VERIFY_PEER | SSL_VERIFY_CLIENT_ONCE),
@@ -1612,7 +1611,8 @@ sni_clienthello_cb(SSL *ssl, int *al, void *arg)
 {
 	const char *tlsext_hostname;
 	const unsigned char *tlsext;
-	size_t left, len ;
+	size_t		left,
+				len;
 	HostContext *install_context = NULL;
 
 	if (!ssl_sni)
@@ -1643,7 +1643,10 @@ sni_clienthello_cb(SSL *ssl, int *al, void *arg)
 
 		left--;
 
-		/* Now we can finally pull out the byte array with the actual hostname. */
+		/*
+		 * Now we can finally pull out the byte array with the actual
+		 * hostname.
+		 */
 		if (left <= 2)
 		{
 			*al = SSL_AD_MISSING_EXTENSION;
@@ -1657,7 +1660,7 @@ sni_clienthello_cb(SSL *ssl, int *al, void *arg)
 			return 0;
 		}
 		left = len;
-		tlsext_hostname = (const char *)tlsext;
+		tlsext_hostname = (const char *) tlsext;
 
 		/*
 		 * We have a requested hostname from the client, match against all
@@ -1668,7 +1671,7 @@ sni_clienthello_cb(SSL *ssl, int *al, void *arg)
 		{
 			foreach_ptr(char, hostname, host->hostnames)
 			{
-				if (pg_strcasecmp(hostname, tlsext_hostname) == 0)
+				if (pg_strncasecmp(hostname, tlsext_hostname, len) == 0)
 				{
 					install_context = host;
 					goto found;
@@ -1730,6 +1733,10 @@ found:
 				errmsg("failed to switch to SSL context for host"));
 		return SSL_CLIENT_HELLO_ERROR;
 	}
+
+	/* Copy over context settings */
+	SSL_clear_options(ssl, 0xFFFFFFFFL);
+	SSL_set_options(ssl, SSL_CTX_get_options(SSL_context));
 
 	return SSL_CLIENT_HELLO_SUCCESS;
 }

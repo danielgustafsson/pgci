@@ -2627,7 +2627,7 @@ openssl x509 -req -in server.csr -text -days 365 \
    <para>
     <replaceable>hostname</replaceable> should either be set to the literal
     hostname for the connection, <literal>/no_sni/</literal> or <literal>*</literal>.
-    <xref linkend="hostname-values"/> contain details on how these values are
+    <xref linkend="hostname-values"/> contains details on how these values are
     used.
     <table id="hostname-values">
      <title>Hostname setting values</title>
@@ -2645,9 +2645,7 @@ openssl x509 -req -in server.csr -text -days 365 \
         <entry><literal>*</literal></entry>
         <entry>Not required</entry>
         <entry>
-         Default host, matches all connections. Multiple hostnames can be defined
-         by using a comma separated list. The certificate and key will be used
-         for connections to all hosts in the list.
+         Default host, matches all connections.
         </entry>
        </row>
 
@@ -2655,7 +2653,8 @@ openssl x509 -req -in server.csr -text -days 365 \
         <entry><literal>/no_sni/</literal></entry>
         <entry>Not allowed</entry>
         <entry>
-         Certificate and key to use for connections with no <literal>sslsni</literal> defined.
+         Certificate and key to use for connections with no
+         <literal>sslsni</literal> defined.
         </entry>
        </row>
 
@@ -2663,8 +2662,10 @@ openssl x509 -req -in server.csr -text -days 365 \
         <entry><replaceable>hostname</replaceable></entry>
         <entry>Required</entry>
         <entry>
-         Certificate and key to use for connections to the host specified in the
-         connection.
+         Certificate and key to use for connections to the host specified in
+         the connection.  Multiple hostnames can be defined by using a comma
+         separated list. The certificate and key will be used for connections
+         to all hosts in the list.
         </entry>
        </row>
       </tbody>

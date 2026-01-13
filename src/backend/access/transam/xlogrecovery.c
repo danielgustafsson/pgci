@@ -783,6 +783,10 @@ InitWalRecovery(ControlFileData *ControlFile, bool *wasShutdown_ptr,
 		CheckPointTLI = ControlFile->checkPointCopy.ThisTimeLineID;
 		RedoStartLSN = ControlFile->checkPointCopy.redo;
 		RedoStartTLI = ControlFile->checkPointCopy.ThisTimeLineID;
+
+		elog(LOG, "InitWalRecovery checkpoint %X/%08X redo %X/%08X",
+			 LSN_FORMAT_ARGS(CheckPointLoc), LSN_FORMAT_ARGS(RedoStartLSN));
+
 		record = ReadCheckpointRecord(xlogprefetcher, CheckPointLoc,
 									  CheckPointTLI);
 		if (record != NULL)
@@ -1676,6 +1680,9 @@ PerformWalRecovery(void)
 	bool		reachedRecoveryTarget = false;
 	TimeLineID	replayTLI;
 
+	elog(LOG, "PerformWalRecovery checkpoint %X/%08X redo %X/%08X",
+		 LSN_FORMAT_ARGS(CheckPointLoc), LSN_FORMAT_ARGS(RedoStartLSN));
+
 	/*
 	 * Initialize shared variables for tracking progress of WAL replay, as if
 	 * we had just replayed the record before the REDO location (or the
@@ -1684,12 +1691,14 @@ PerformWalRecovery(void)
 	SpinLockAcquire(&XLogRecoveryCtl->info_lck);
 	if (RedoStartLSN < CheckPointLoc)
 	{
+		elog(LOG, "(RedoStartLSN < CheckPointLoc)");
 		XLogRecoveryCtl->lastReplayedReadRecPtr = InvalidXLogRecPtr;
 		XLogRecoveryCtl->lastReplayedEndRecPtr = RedoStartLSN;
 		XLogRecoveryCtl->lastReplayedTLI = RedoStartTLI;
 	}
 	else
 	{
+		elog(LOG, "(RedoStartLSN >= CheckPointLoc)");
 		XLogRecoveryCtl->lastReplayedReadRecPtr = xlogreader->ReadRecPtr;
 		XLogRecoveryCtl->lastReplayedEndRecPtr = xlogreader->EndRecPtr;
 		XLogRecoveryCtl->lastReplayedTLI = CheckPointTLI;
@@ -1700,6 +1709,10 @@ PerformWalRecovery(void)
 	XLogRecoveryCtl->currentChunkStartTime = 0;
 	XLogRecoveryCtl->recoveryPauseState = RECOVERY_NOT_PAUSED;
 	SpinLockRelease(&XLogRecoveryCtl->info_lck);
+
+	elog(LOG, "PerformWalRecovery lastReplayedReadRecPtr %X/%08X lastReplayedEndRecPtr %X/%08X",
+		 LSN_FORMAT_ARGS(XLogRecoveryCtl->lastReplayedReadRecPtr),
+		 LSN_FORMAT_ARGS(XLogRecoveryCtl->lastReplayedEndRecPtr));
 
 	/* Also ensure XLogReceiptTime has a sane value */
 	XLogReceiptTime = GetCurrentTimestamp();

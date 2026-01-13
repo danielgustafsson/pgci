@@ -107,7 +107,7 @@ PageIsVerified(PageData *page, BlockNumber blkno, int flags, bool *checksum_fail
 	 */
 	if (!PageIsNew(page))
 	{
-		if (DataChecksumsEnabled())
+		if (DataChecksumsNeedVerify())
 		{
 			checksum = pg_checksum_page(page, blkno);
 
@@ -151,8 +151,8 @@ PageIsVerified(PageData *page, BlockNumber blkno, int flags, bool *checksum_fail
 		if ((flags & (PIV_LOG_WARNING | PIV_LOG_LOG)) != 0)
 			ereport(flags & PIV_LOG_WARNING ? WARNING : LOG,
 					(errcode(ERRCODE_DATA_CORRUPTED),
-					 errmsg("page verification failed, calculated checksum %u but expected %u",
-							checksum, p->pd_checksum)));
+					 errmsg("page verification failed, calculated checksum %u but expected %u (page LSN %X/%08X)",
+							checksum, p->pd_checksum, LSN_FORMAT_ARGS(PageXLogRecPtrGet(p->pd_lsn)))));
 
 		if (header_sane && (flags & PIV_IGNORE_CHECKSUM_FAILURE))
 			return true;
@@ -1511,7 +1511,7 @@ PageSetChecksumCopy(Page page, BlockNumber blkno)
 	static char *pageCopy = NULL;
 
 	/* If we don't need a checksum, just return the passed-in data */
-	if (PageIsNew(page) || !DataChecksumsEnabled())
+	if (PageIsNew(page) || !DataChecksumsNeedWrite())
 		return page;
 
 	/*
@@ -1541,7 +1541,7 @@ void
 PageSetChecksumInplace(Page page, BlockNumber blkno)
 {
 	/* If we don't need a checksum, just return */
-	if (PageIsNew(page) || !DataChecksumsEnabled())
+	if (PageIsNew(page) || !DataChecksumsNeedWrite())
 		return;
 
 	((PageHeader) page)->pd_checksum = pg_checksum_page(page, blkno);

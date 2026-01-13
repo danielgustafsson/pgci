@@ -18,6 +18,7 @@
 #include "pgstat.h"
 #include "port/atomics.h"
 #include "postmaster/bgworker_internals.h"
+#include "postmaster/datachecksumsworker.h"
 #include "postmaster/postmaster.h"
 #include "replication/logicallauncher.h"
 #include "replication/logicalworker.h"
@@ -136,6 +137,12 @@ static const struct
 	},
 	{
 		"SequenceSyncWorkerMain", SequenceSyncWorkerMain
+	},
+	{
+		"DataChecksumsWorkerLauncherMain", DataChecksumsWorkerLauncherMain
+	},
+	{
+		"DataChecksumsWorkerMain", DataChecksumsWorkerMain
 	}
 };
 

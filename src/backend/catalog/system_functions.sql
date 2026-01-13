@@ -657,6 +657,14 @@ LANGUAGE INTERNAL
 STRICT VOLATILE PARALLEL UNSAFE
 AS 'pg_replication_origin_session_setup';
 
+CREATE OR REPLACE FUNCTION
+  pg_enable_data_checksums(cost_delay integer DEFAULT 0,
+                           cost_limit integer DEFAULT 100)
+RETURNS void
+STRICT VOLATILE LANGUAGE internal
+PARALLEL RESTRICTED
+AS 'enable_data_checksums';
+
 --
 -- The default permissions for functions mean that anyone can execute them.
 -- A number of functions shouldn't be executable by just anyone, but rather
@@ -781,6 +789,10 @@ REVOKE EXECUTE ON FUNCTION pg_ls_logicalsnapdir() FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION pg_ls_logicalmapdir() FROM PUBLIC;
 
 REVOKE EXECUTE ON FUNCTION pg_ls_replslotdir(text) FROM PUBLIC;
+
+REVOKE EXECUTE ON FUNCTION pg_enable_data_checksums(integer, integer) FROM public;
+
+REVOKE EXECUTE ON FUNCTION pg_disable_data_checksums() FROM public;
 
 --
 -- We also set up some things as accessible to standard roles.

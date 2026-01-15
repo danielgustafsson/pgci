@@ -156,8 +156,9 @@ enum ssl_protocol_versions
  * prototypes for functions in be-secure-common.c
  */
 extern int	run_ssl_passphrase_command(const char *prompt, bool is_server_start,
-									   char *buf, int size);
+									   char *buf, int size, void *userdata);
 extern bool check_ssl_key_file_permissions(const char *ssl_key_file,
 										   bool isServerStart);
+extern int	load_hosts(List **hosts, char **err_msg);
 
 #endif							/* LIBPQ_H */

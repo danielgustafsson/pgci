@@ -97,7 +97,8 @@ def compute_environment_vars():
     operating_systems = [
       'compilerwarnings',
       'freebsd',
-      'linux',
+      'linuxmeson',
+      'linuxautoconf',
       'macos',
       'mingw',
       'netbsd',

@@ -26,6 +26,7 @@ $node->append_conf('postgresql.conf',
 $node->append_conf('postgresql.conf',
 	"shared_preload_libraries = 'ssl_passphrase_func'");
 $node->append_conf('postgresql.conf', "ssl = 'on'");
+$node->append_conf('postgresql.conf', "ssl_groups = 'prime256v1:secp521r1'");
 
 my $ddir = $node->data_dir;
 

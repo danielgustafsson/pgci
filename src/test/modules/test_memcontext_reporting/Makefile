@@ -11,8 +11,6 @@ OBJS = \
    test_memcontext_reporting.o
 PGFILEDESC = "test_memcontext_reporting - test code for memory context reporting"
 
-REGRESS = test_memcontext_reporting
-
 ifdef USE_PGXS
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)

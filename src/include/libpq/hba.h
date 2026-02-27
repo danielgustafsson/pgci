@@ -151,6 +151,33 @@ typedef struct IdentLine
 	AuthToken  *pg_user;
 } IdentLine;
 
+typedef struct HostsLine
+{
+	int			linenumber;
+
+	char	   *sourcefile;
+	char	   *rawline;
+
+	/* Required fields */
+	List	   *hostnames;
+	char	   *ssl_key;
+	char	   *ssl_cert;
+
+	/* Optional fields */
+	char	   *ssl_ca;
+	char	   *ssl_passphrase_cmd;
+	bool		ssl_passphrase_reload;
+} HostsLine;
+
+typedef enum HostsFileLoad
+{
+	HOSTSFILE_LOAD_OK = 0,
+	HOSTSFILE_LOAD_FAILED,
+	HOSTSFILE_EMPTY,
+	HOSTSFILE_MISSING,
+	HOSTSFILE_DISABLED,
+} HostsFileLoadResult;
+
 /*
  * TokenizedAuthLine represents one line lexed from an authentication
  * configuration file.  Each item in the "fields" list is a sub-list of

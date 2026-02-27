@@ -1004,4 +1004,19 @@ $node->connect_fails(
 		qr{Failed certificate data \(unverified\): subject "/CN=\\xce\\x9f\\xce\\xb4\\xcf\\x85\\xcf\\x83\\xcf\\x83\\xce\\xad\\xce\\xb1\\xcf\\x82", serial number \d+, issuer "/CN=Test CA for PostgreSQL SSL regression test client certs"},
 	]);
 
+switch_server_cert(
+    $node,
+    certfile => 'server-cn-only',
+    cafile => '');
+
+my $connstr =
+  "user=ssltestuser dbname=certdb hostaddr=$SERVERHOSTADDR sslmode=require sslsni=1";
+
+# example.org is unconfigured and should fail.
+$node->connect_fails(
+    "$connstr host=example.org sslcertmode=require sslcert=ssl/client.crt"
+      . sslkey('client.key'),
+    "host: 'example.org', ca: '': connect with sslcert, no client CA configured",
+    expected_stderr => qr/client certificates can only be checked if a root certificate store is available/);
+
 done_testing();

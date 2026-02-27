@@ -181,10 +181,18 @@ sub set_server_cert
 	  unless defined $params->{keyfile};
 
 	my $sslconf =
-		"ssl_ca_file='$params->{cafile}.crt'\n"
-	  . "ssl_cert_file='$params->{certfile}.crt'\n"
+	    "ssl_cert_file='$params->{certfile}.crt'\n"
 	  . "ssl_key_file='$params->{keyfile}.key'\n"
 	  . "ssl_crl_file='$params->{crlfile}'\n";
+    if ($params->{cafile} ne "")
+    {
+        $sslconf .= "ssl_ca_file='$params->{cafile}.crt'\n";
+    }
+    else
+    {
+        $sslconf .= "ssl_ca_file=''\n";
+    }
+
 	$sslconf .= "ssl_crl_dir='$params->{crldir}'\n"
 	  if defined $params->{crldir};
 

@@ -341,10 +341,10 @@ parse_hosts_line(TokenizedAuthLine *tok_line, int elevel)
  *
  * Reads and parses the pg_hosts.conf configuration file and passes back a List
  * of HostsLine elements containing the parsed lines, or NIL in case of an empty
- * file.  The list is returned in the hosts_lines parameter. If loading the
- * file was successful, true is returned, else false.  This function is
- * intended to be executed within a temporary memory context which can be
- * discarded to free memory allocated during the processing of the file.
+ * file.  The list is returned in the hosts parameter. The function will return
+ * a HostsFileLoadResult value detailing the result of the operation.  When
+ * the hosts configuration failed to load, the err_msg variable may have more
+ * information in case it was passed as non-NULL.
  */
 int
 load_hosts(List **hosts, char **err_msg)
@@ -361,7 +361,12 @@ load_hosts(List **hosts, char **err_msg)
 	 * API misuse or a similar kind of programmer error.
 	 */
 	if (!hosts)
+	{
+		if (err_msg)
+			*err_msg = psprintf("cannot load config from \"%s\", return variable missing",
+								HostsFileName);
 		return HOSTSFILE_LOAD_FAILED;
+	}
 	*hosts = NIL;
 
 	/*
@@ -404,7 +409,12 @@ load_hosts(List **hosts, char **err_msg)
 	*hosts = parsed_lines;
 
 	if (!ok)
+	{
+		if (err_msg)
+			*err_msg = psprintf("loading config from \"%s\" failed due to parsing error",
+								HostsFileName);
 		return HOSTSFILE_LOAD_FAILED;
+	}
 
 	if (parsed_lines == NIL)
 		return HOSTSFILE_EMPTY;

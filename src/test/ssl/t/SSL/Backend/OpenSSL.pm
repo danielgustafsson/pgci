@@ -147,8 +147,7 @@ following parameters are supported:
 =item cafile => B<value>
 
 The CA certificate file to use for the C<ssl_ca_file> GUC. If omitted it will
-default to 'root+client_ca.crt'. If empty, no C<ssl_ca_file> configuration
-parameter will be set.
+default to 'root+client_ca.crt'.
 
 =item certfile => B<value>
 

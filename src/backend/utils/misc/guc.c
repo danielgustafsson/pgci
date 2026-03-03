@@ -1866,6 +1866,7 @@ SelectConfigFiles(const char *userDoption, const char *progname)
 					 "or by the -D invocation option, or by the "
 					 "PGDATA environment variable.\n",
 					 progname, ConfigFileName);
+		goto fail;
 	}
 	SetConfigOption("hosts_file", fname, PGC_POSTMASTER, PGC_S_OVERRIDE);
 

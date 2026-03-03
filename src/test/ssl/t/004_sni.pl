@@ -33,6 +33,11 @@ if (!$ENV{PG_TEST_EXTRA} || $ENV{PG_TEST_EXTRA} !~ /\bssl\b/)
 
 my $ssl_server = SSL::Server->new();
 
+if ($ssl_server->is_libressl)
+{
+	plan skip_all => 'SNI not supported when building with LibreSSL';
+}
+
 my $node = PostgreSQL::Test::Cluster->new('primary');
 $node->init;
 

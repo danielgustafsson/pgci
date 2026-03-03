@@ -73,13 +73,15 @@ static int	alpn_cb(SSL *ssl,
 					const unsigned char *in,
 					unsigned int inlen,
 					void *userdata);
-static int	sni_clienthello_cb(SSL *ssl, int *al, void *arg);
 static bool initialize_dh(SSL_CTX *context, bool isServerStart);
 static bool initialize_ecdh(SSL_CTX *context, bool isServerStart);
 static const char *SSLerrmessageExt(unsigned long ecode, const char *replacement);
 static const char *SSLerrmessage(unsigned long ecode);
 static bool init_host_context(HostsLine *host, bool isServerStart);
 static void host_context_cleanup_cb(void *arg);
+#ifdef HAVE_SSL_CTX_SET_CLIENT_HELLO_CB
+static int	sni_clienthello_cb(SSL *ssl, int *al, void *arg);
+#endif
 
 static char *X509_NAME_to_cstring(X509_NAME *name);
 
@@ -180,6 +182,18 @@ be_tls_init(bool isServerStart)
 	 */
 	if (ssl_sni)
 	{
+		/*
+		 * The GUC check hook should have already blocked this but to be on
+		 * the safe side we doublecheck here.
+		 */
+#ifndef HAVE_SSL_CTX_SET_CLIENT_HELLO_CB
+		ereport(isServerStart ? FATAL : LOG,
+				errcode(ERRCODE_CONFIG_FILE_ERROR),
+				errmsg("ssl_sni is not supported with LibreSSL"));
+		goto error;
+#endif
+
+		/* Attempt to load configuration from pg_hosts.conf */
 		res = load_hosts(&pg_hosts, &err_msg);
 
 		/*
@@ -309,6 +323,7 @@ be_tls_init(bool isServerStart)
 		goto error;
 	}
 
+#ifdef HAVE_SSL_CTX_SET_CLIENT_HELLO_CB
 	/*
 	 * Create a new SSL context into which we'll load all the configuration
 	 * settings.  If we fail partway through, we can avoid memory leakage by
@@ -327,6 +342,14 @@ be_tls_init(bool isServerStart)
 						SSLerrmessage(ERR_get_error()))));
 		goto error;
 	}
+#else
+	/*
+	 * If the client hello callback isn't supported we want to use the default
+	 * context as the one to drive the handshake so avoid creating a new one
+	 * and use the already existing default one instead.
+	 */
+	context = new_hosts->default_host->ssl_ctx;
+#endif
 
 	/*
 	 * Disable OpenSSL's moving-write-buffer sanity check, because it causes
@@ -335,9 +358,13 @@ be_tls_init(bool isServerStart)
 	SSL_CTX_set_mode(context, SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
 
 	/*
-	 * Call init hook (usually to set password callback)
+	 * Call init hook (usually to set password callback) in case SNI hasn't
+	 * been enabled. If SNI is enabled the hook won't operate on the actual
+	 * TLS context used so it cannot function properly. TODO: issue a warning
+	 * in case there is a non-default hook installed.
 	 */
-	(*openssl_tls_init_hook) (context, isServerStart);
+	if (!ssl_sni)
+		(*openssl_tls_init_hook) (context, isServerStart);
 
 	if (ssl_min_protocol_version)
 	{
@@ -494,7 +521,7 @@ be_tls_init(bool isServerStart)
 
 	/*
 	 * Clean up by releasing working SSL contexts as well as allocations
-	 * perfornmed during parsing.  Since all our allocations are done in a
+	 * performed during parsing.  Since all our allocations are done in a
 	 * local memory context all we need to do is delete it.
 	 */
 error:
@@ -743,13 +770,6 @@ be_tls_open_server(Port *port)
 	/* enable ALPN */
 	SSL_CTX_set_alpn_select_cb(SSL_context, alpn_cb, port);
 
-	/*
-	 * Install SNI TLS extension callback in order to validate hostnames in
-	 * case ssl_sni has been enabled.  If ssl_sni is disabled we still use
-	 * the callback to immediately assign the default context.
-	 */
-	SSL_CTX_set_client_hello_cb(SSL_context, sni_clienthello_cb, NULL);
-
 	if (!(port->ssl = SSL_new(SSL_context)))
 	{
 		ereport(COMMERROR,
@@ -766,6 +786,38 @@ be_tls_open_server(Port *port)
 						SSLerrmessage(ERR_get_error()))));
 		return -1;
 	}
+
+	/*
+	 * If the underlying TLS library supports the client hello callback we
+	 * use that in order to support host based configuration using the SNI
+	 * TLS extension.  If the user has disabled SNI via the ssl_sni GUC we
+	 * still make use of the callback in order to have consistent handling of
+	 * OpenSSL contexts, except in that case the callback will install the
+	 * default configuration regardless of the hostname sent by the user in
+	 * the handshake.
+	 *
+	 * In case the TLS library does not support the client hello callback, as
+	 * of this writing LibreSSL does not, we need to install the client cert
+	 * verification callback here (if the user configured a CA) since we cannot
+	 * use the OpenSSL context update functionality.
+	 */
+#ifdef HAVE_SSL_CTX_SET_CLIENT_HELLO_CB
+	SSL_CTX_set_client_hello_cb(SSL_context, sni_clienthello_cb, NULL);
+#else
+	if (SSL_hosts->default_host->ssl_ca && SSL_hosts->default_host->ssl_ca[0])
+	{
+		/*
+		 * Always ask for SSL client cert, but don't fail if it's not
+		 * presented.  We might fail such connections later, depending on what
+		 * we find in pg_hba.conf.
+		 */
+		SSL_set_verify(port->ssl,
+					   (SSL_VERIFY_PEER | SSL_VERIFY_CLIENT_ONCE),
+					   verify_cb);
+
+		ssl_loaded_verify_locations = true;
+	}
+#endif
 
 	err_context.cert_errdetail = NULL;
 	SSL_set_ex_data(port->ssl, 0, &err_context);
@@ -1673,6 +1725,7 @@ alpn_cb(SSL *ssl,
 	}
 }
 
+#ifdef HAVE_SSL_CTX_SET_CLIENT_HELLO_CB
 /*
  * ssl_update_ssl
  *
@@ -1922,6 +1975,7 @@ found:
 
 	return SSL_CLIENT_HELLO_SUCCESS;
 }
+#endif /* HAVE_SSL_CTX_SET_CLIENT_HELLO_CB */
 
 /*
  * Set DH parameters for generating ephemeral DH keys.  The

@@ -378,6 +378,17 @@ BEGIN ATOMIC
 END;
 
 
+CREATE OR REPLACE FUNCTION
+  pg_get_process_memory_contexts(IN pid integer, IN summary boolean DEFAULT false,
+  OUT name text, OUT ident text, OUT type text, OUT level integer,
+  OUT path integer[], OUT total_bytes bigint, OUT total_nblocks bigint,
+  OUT free_bytes bigint, OUT free_chunks bigint, OUT used_bytes bigint,
+  OUT num_agg_contexts integer)
+RETURNS SETOF RECORD
+LANGUAGE INTERNAL
+STRICT VOLATILE PARALLEL UNSAFE
+AS 'pg_get_process_memory_contexts';
+
 --
 -- The default permissions for functions mean that anyone can execute them.
 -- A number of functions shouldn't be executable by just anyone, but rather
@@ -503,6 +514,7 @@ REVOKE EXECUTE ON FUNCTION pg_ls_logicalmapdir() FROM PUBLIC;
 
 REVOKE EXECUTE ON FUNCTION pg_ls_replslotdir(text) FROM PUBLIC;
 
+REVOKE EXECUTE ON FUNCTION pg_get_process_memory_contexts(integer, boolean) FROM PUBLIC;
 --
 -- We also set up some things as accessible to standard roles.
 --
@@ -528,6 +540,8 @@ GRANT EXECUTE ON FUNCTION pg_ls_replslotdir(text) TO pg_monitor;
 GRANT EXECUTE ON FUNCTION pg_current_logfile() TO pg_monitor;
 
 GRANT EXECUTE ON FUNCTION pg_current_logfile(text) TO pg_monitor;
+
+GRANT EXECUTE ON FUNCTION pg_get_process_memory_contexts(integer, boolean) TO pg_read_all_stats;
 
 GRANT pg_read_all_settings TO pg_monitor;
 

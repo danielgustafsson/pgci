@@ -44,10 +44,6 @@ char	   *ssl_dh_params_file;
 char	   *ssl_passphrase_command;
 bool		ssl_passphrase_command_supports_reload;
 
-#ifdef USE_SSL
-bool		ssl_loaded_verify_locations = false;
-#endif
-
 /* GUC variable controlling SSL cipher list */
 char	   *SSLCipherSuites = NULL;
 char	   *SSLCipherList = NULL;
@@ -60,6 +56,9 @@ bool		SSLPreferServerCiphers;
 
 int			ssl_min_protocol_version = PG_TLS1_2_VERSION;
 int			ssl_max_protocol_version = PG_TLS_ANY;
+
+/* GUC variable: if false, discards hostname extensions in handshake */
+bool		ssl_sni = false;
 
 /* ------------------------------------------------------------ */
 /*			 Procedures common to all secure sessions			*/
@@ -100,7 +99,7 @@ bool
 secure_loaded_verify_locations(void)
 {
 #ifdef USE_SSL
-	return ssl_loaded_verify_locations;
+	return be_tls_loaded_verify_locations();
 #else
 	return false;
 #endif

@@ -132,7 +132,7 @@ be_tls_init(bool isServerStart)
 	MemoryContext oldcxt;
 	MemoryContext host_memcxt = NULL;
 	MemoryContextCallback *host_memcxt_cb;
-	char	   *err_msg;
+	char	   *err_msg = NULL;
 	int			res;
 	struct hosts *new_hosts;
 	SSL_CTX    *context = NULL;
@@ -349,6 +349,7 @@ be_tls_init(bool isServerStart)
 	 * and use the already existing default one instead.
 	 */
 	context = new_hosts->default_host->ssl_ctx;
+	SSL_CTX_up_ref(context);
 #endif
 
 	/*
@@ -506,7 +507,10 @@ be_tls_init(bool isServerStart)
 	 * Success!  Replace any existing SSL_context and host configurations.
 	 */
 	if (SSL_context)
+	{
 		SSL_CTX_free(SSL_context);
+		SSL_context = NULL;
+	}
 
 	MemoryContextSwitchTo(oldcxt);
 

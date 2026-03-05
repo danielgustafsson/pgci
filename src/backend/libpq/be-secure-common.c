@@ -26,6 +26,7 @@
 #include "common/string.h"
 #include "libpq/libpq.h"
 #include "storage/fd.h"
+#include "utils/builtins.h"
 #include "utils/guc.h"
 
 static HostsLine *parse_hosts_line(TokenizedAuthLine *tok_line, int elevel);
@@ -311,17 +312,22 @@ parse_hosts_line(TokenizedAuthLine *tok_line, int elevel)
 			tokens = lfirst(field);
 			token = linitial(tokens);
 
-			if (token->string[0] == '1'
-				|| pg_strcasecmp(token->string, "true") == 0
-				|| pg_strcasecmp(token->string, "on") == 0
-				|| pg_strcasecmp(token->string, "yes") == 0)
-				parsedline->ssl_passphrase_reload = true;
-			else if (token->string[0] == '0'
-					 || pg_strcasecmp(token->string, "false") == 0
-					 || pg_strcasecmp(token->string, "off") == 0
-					 || pg_strcasecmp(token->string, "no") == 0)
-				parsedline->ssl_passphrase_reload = false;
-			else
+			/*
+			 * There should be no more tokens after this, if there are break
+			 * parsing and report error to avoid silently accepting incorrect
+			 * config.
+			 */
+			if (tokens->length > 1)
+			{
+				ereport(elevel,
+						errcode(ERRCODE_CONFIG_FILE_ERROR),
+								errmsg("extra fields at end of line"),
+								errcontext("line %d of configuration file \"%s\"",
+										   tok_line->line_num, tok_line->file_name));
+				return NULL;
+			}
+
+			if (!parse_bool(token->string, &parsedline->ssl_passphrase_reload))
 			{
 				ereport(elevel,
 						errcode(ERRCODE_CONFIG_FILE_ERROR),

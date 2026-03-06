@@ -358,15 +358,6 @@ be_tls_init(bool isServerStart)
 	 */
 	SSL_CTX_set_mode(context, SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
 
-	/*
-	 * Call init hook (usually to set password callback) in case SNI hasn't
-	 * been enabled. If SNI is enabled the hook won't operate on the actual
-	 * TLS context used so it cannot function properly. TODO: issue a warning
-	 * in case there is a non-default hook installed.
-	 */
-	if (!ssl_sni)
-		(*openssl_tls_init_hook) (context, isServerStart);
-
 	if (ssl_min_protocol_version)
 	{
 		ssl_ver_min = ssl_protocol_version_to_openssl(ssl_min_protocol_version);
@@ -577,6 +568,49 @@ init_host_context(HostsLine *host, bool isServerStart)
 	}
 
 	/*
+	 * Call init hook (usually to set password callback) in case SNI hasn't
+	 * been enabled. If SNI is enabled the hook won't operate on the actual
+	 * TLS context used so it cannot function properly. TODO: issue a warning
+	 * in case there is a non-default hook installed and SNI is enabled.
+	 *
+	 * If SNI is enabled, we set password callback based what was configured.
+	 */
+	if (!ssl_sni)
+		(*openssl_tls_init_hook) (ctx, isServerStart);
+	else
+	{
+		/*
+		 * Set up the password callback, if configured.
+		 */
+		if (isServerStart)
+		{
+			if (host->ssl_passphrase_cmd && host->ssl_passphrase_cmd[0])
+			{
+				SSL_CTX_set_default_passwd_cb(ctx, ssl_external_passwd_cb);
+				SSL_CTX_set_default_passwd_cb_userdata(ctx, host->ssl_passphrase_cmd);
+			}
+		}
+		else
+		{
+			if (host->ssl_passphrase_reload && host->ssl_passphrase_cmd[0])
+			{
+				SSL_CTX_set_default_passwd_cb(ctx, ssl_external_passwd_cb);
+				SSL_CTX_set_default_passwd_cb_userdata(ctx, host->ssl_passphrase_cmd);
+			}
+			else
+			{
+				/*
+				 * If reloading and no external command is configured, override
+				 * OpenSSL's default handling of passphrase-protected files,
+				 * because we don't want to prompt for a passphrase in an
+				 * already-running server.
+				 */
+				SSL_CTX_set_default_passwd_cb(ctx, dummy_ssl_passwd_cb);
+			}
+		}
+	}
+
+	/*
 	 * Load and verify server's certificate and private key
 	 */
 	if (SSL_CTX_use_certificate_chain_file(ctx, host->ssl_cert) != 1)
@@ -591,34 +625,6 @@ init_host_context(HostsLine *host, bool isServerStart)
 	if (!check_ssl_key_file_permissions(host->ssl_key, isServerStart))
 		goto error;
 
-	/*
-	 * Set up the password callback, if configured.
-	 */
-	if (isServerStart)
-	{
-		if (host->ssl_passphrase_cmd && host->ssl_passphrase_cmd[0])
-		{
-			SSL_CTX_set_default_passwd_cb(ctx, ssl_external_passwd_cb);
-			SSL_CTX_set_default_passwd_cb_userdata(ctx, host->ssl_passphrase_cmd);
-		}
-	}
-	else
-	{
-		if (host->ssl_passphrase_reload && host->ssl_passphrase_cmd[0])
-		{
-			SSL_CTX_set_default_passwd_cb(ctx, ssl_external_passwd_cb);
-			SSL_CTX_set_default_passwd_cb_userdata(ctx, host->ssl_passphrase_cmd);
-		}
-		else
-
-			/*
-			 * If reloading and no external command is configured, override
-			 * OpenSSL's default handling of passphrase-protected files,
-			 * because we don't want to prompt for a passphrase in an
-			 * already-running server.
-			 */
-			SSL_CTX_set_default_passwd_cb(ctx, dummy_ssl_passwd_cb);
-	}
 
 	/* used by the callback */
 	ssl_is_server_start = isServerStart;

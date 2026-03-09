@@ -27,6 +27,7 @@
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "pgstat.h"
+#include "postmaster/datachecksumsworker.h"
 #include "utils/acl.h"
 #include "replication/walreceiver.h"
 #include "storage/fd.h"
@@ -856,4 +857,51 @@ pg_stat_get_recovery(PG_FUNCTION_ARGS)
 	values[8] = CStringGetTextDatum(GetRecoveryPauseStateString(pause_state));
 
 	PG_RETURN_DATUM(HeapTupleGetDatum(heap_form_tuple(tupdesc, values, nulls)));
+}
+
+/*
+ * Disables data checksums for the cluster, if applicable. Starts a background
+ * worker which turns off the data checksums.
+ */
+Datum
+disable_data_checksums(PG_FUNCTION_ARGS)
+{
+	if (!superuser())
+		ereport(ERROR,
+				errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				errmsg("must be superuser to change data checksum state"));
+
+	StartDataChecksumsWorkerLauncher(DISABLE_DATACHECKSUMS, 0, 0);
+	PG_RETURN_VOID();
+}
+
+/*
+ * Enables data checksums for the cluster, if applicable.  Supports vacuum-
+ * like cost based throttling to limit system load. Starts a background worker
+ * which updates data checksums on existing data.
+ */
+Datum
+enable_data_checksums(PG_FUNCTION_ARGS)
+{
+	int			cost_delay = PG_GETARG_INT32(0);
+	int			cost_limit = PG_GETARG_INT32(1);
+
+	if (!superuser())
+		ereport(ERROR,
+				errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				errmsg("must be superuser to change data checksum state"));
+
+	if (cost_delay < 0)
+		ereport(ERROR,
+				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("cost delay cannot be a negative value"));
+
+	if (cost_limit <= 0)
+		ereport(ERROR,
+				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("cost limit must be greater than zero"));
+
+	StartDataChecksumsWorkerLauncher(ENABLE_DATACHECKSUMS, cost_delay, cost_limit);
+
+	PG_RETURN_VOID();
 }

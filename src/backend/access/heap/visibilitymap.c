@@ -138,7 +138,7 @@ static Buffer vm_extend(Relation rel, BlockNumber vm_nblocks);
  * any I/O.  Returns true if any bits have been cleared and false otherwise.
  */
 bool
-visibilitymap_clear(Relation rel, BlockNumber heapBlk, Buffer vmbuf, uint8 flags)
+visibilitymap_clear_vmbits(Relation rel, BlockNumber heapBlk, Buffer vmbuf, uint8 flags)
 {
 	BlockNumber mapBlock = HEAPBLK_TO_MAPBLOCK(heapBlk);
 	int			mapByte = HEAPBLK_TO_MAPBYTE(heapBlk);
@@ -166,6 +166,65 @@ visibilitymap_clear(Relation rel, BlockNumber heapBlk, Buffer vmbuf, uint8 flags
 		map[mapByte] &= ~mask;
 
 		MarkBufferDirty(vmbuf);
+
+		cleared = true;
+	}
+
+	LockBuffer(vmbuf, BUFFER_LOCK_UNLOCK);
+
+	return cleared;
+}
+
+bool
+visibilitymap_clear(Relation rel, BlockNumber heapBlk, Buffer vmbuf, XLogRecPtr recptr, TransactionId cutoff_xid, uint8 flags)
+{
+	BlockNumber mapBlock = HEAPBLK_TO_MAPBLOCK(heapBlk);
+	int			mapByte = HEAPBLK_TO_MAPBYTE(heapBlk);
+	int			mapOffset = HEAPBLK_TO_OFFSET(heapBlk);
+	uint8		mask = flags << mapOffset;
+	char	   *map;
+	bool		cleared = false;
+	Page		page;
+
+	/* Must never clear all_visible bit while leaving all_frozen bit set */
+	Assert(flags & VISIBILITYMAP_VALID_BITS);
+	Assert(flags != VISIBILITYMAP_ALL_VISIBLE);
+
+#ifdef TRACE_VISIBILITYMAP
+	elog(DEBUG1, "vm_clear %s %d", RelationGetRelationName(rel), heapBlk);
+#endif
+
+	if (!BufferIsValid(vmbuf) || BufferGetBlockNumber(vmbuf) != mapBlock)
+		elog(ERROR, "wrong buffer passed to visibilitymap_clear");
+
+	LockBuffer(vmbuf, BUFFER_LOCK_EXCLUSIVE);
+	map = PageGetContents(BufferGetPage(vmbuf));
+	page = BufferGetPage(vmbuf);
+
+	if (map[mapByte] & mask)
+	{
+		START_CRIT_SECTION();
+		map[mapByte] &= ~mask;
+
+		MarkBufferDirty(vmbuf);
+
+		if (RelationNeedsWAL(rel))
+		{
+			elog(LOG, "XXX: visibilitymap_clear: NeedsWAL, HintBitNeeded: %s", XLogHintBitIsNeeded() ? "true" : "false");
+
+			if (!XLogRecPtrIsValid(recptr))
+			{
+				recptr = log_heap_visible(rel, InvalidBuffer, vmbuf, cutoff_xid, flags);
+				if (XLogHintBitIsNeeded())
+				{
+					Page heapPage = BufferGetPage(vmbuf);
+					PageSetLSN(heapPage, recptr);
+				}
+			}
+			PageSetLSN(page, recptr);
+		}
+
+		END_CRIT_SECTION();
 		cleared = true;
 	}
 

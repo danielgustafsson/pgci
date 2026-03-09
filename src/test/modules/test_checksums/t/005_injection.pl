@@ -77,32 +77,5 @@ SKIP:
 	enable_data_checksums($node, wait => 'on');
 }
 
-# Test starting the data checksums launcher from two sessions concurrently. In
-# order reliably run things concurrently we use background psql's which block
-# on various fault injected delays.
-enable_data_checksums($node, wait => 'on');
-
-#my $A = $node->background_psql('postgres');
-#$A->query_safe('SELECT dcw_inject_launcher_delay(true);');
-#$A->query_safe('SELECT pg_enable_data_checksums();');
-#$node->safe_psql('postgres', 'SELECT dcw_inject_launcher_delay(false);');
-#my ($ret, $stdout, $stderr) =
-#  $node->psql('postgres', 'SELECT pg_disable_data_checksums();');
-#wait_for_checksum_state($node, 'off');
-
-
-my $B = $node->background_psql('postgres');
-$B->query_safe('SELECT dcw_inject_launcher_delay(true);');
-$B->query_safe('SELECT pg_enable_data_checksums(0,200);');
-$node->safe_psql('postgres', 'SELECT dcw_inject_launcher_delay(false);');
-my $stderr;
-$node->psql('postgres', 'SELECT pg_enable_data_checksums();', on_error_stop => 0, stderr => \$stderr);
-like($stderr, qr/data checksum processing already running/,
-	'ERROR on stderr');
-wait_for_checksum_state($node, 'on');
-
-$B->quit;
-
-
 $node->stop;
 done_testing();

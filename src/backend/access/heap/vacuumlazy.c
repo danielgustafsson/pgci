@@ -2005,7 +2005,7 @@ identify_and_fix_vm_corruption(Relation rel, Buffer heap_buffer,
 				 errmsg("page is not marked all-visible but visibility map bit is set in relation \"%s\" page %u",
 						RelationGetRelationName(rel), heap_blk)));
 
-		visibilitymap_clear(rel, heap_blk, vmbuffer,
+		visibilitymap_clear_vmbits(rel, heap_blk, vmbuffer,
 							VISIBILITYMAP_VALID_BITS);
 		*vmbits = 0;
 	}
@@ -2033,7 +2033,7 @@ identify_and_fix_vm_corruption(Relation rel, Buffer heap_buffer,
 
 		PageClearAllVisible(heap_page);
 		MarkBufferDirty(heap_buffer);
-		visibilitymap_clear(rel, heap_blk, vmbuffer,
+		visibilitymap_clear_vmbits(rel, heap_blk, vmbuffer,
 							VISIBILITYMAP_VALID_BITS);
 		*vmbits = 0;
 	}

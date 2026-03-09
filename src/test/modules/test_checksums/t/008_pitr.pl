@@ -11,7 +11,7 @@ use lib $FindBin::RealBin;
 
 use DataChecksums::Utils;
 
-if (!$ENV{PG_TEST_EXTRA} || $ENV{PG_TEST_EXTRA} !~ /\bchecksum_extendeda\b/)
+if (!$ENV{PG_TEST_EXTRA} || $ENV{PG_TEST_EXTRA} !~ /\bchecksum_extended\b/)
 {
 	plan skip_all => 'Extended checksum tests not enabled';
 }

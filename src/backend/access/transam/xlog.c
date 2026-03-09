@@ -4742,7 +4742,7 @@ DataChecksumsNeedVerify(void)
  * worker is setting checksums on all pages, it can thus be used to check for
  * aborted checksum processing which need to be restarted.
  */
-inline bool
+bool
 DataChecksumsOnInProgress(void)
 {
 	return (LocalDataChecksumVersion == PG_DATA_CHECKSUM_INPROGRESS_ON_VERSION);
@@ -4799,7 +4799,7 @@ SetDataChecksumsOnInProgress(void)
 	END_CRIT_SECTION();
 
 	/*
-	 * Update te controlfile before waiting since if we have an immediate
+	 * Update the controlfile before waiting since if we have an immediate
 	 * shutdown while waiting we want to come back up with checksums enabled.
 	 */
 	LWLockAcquire(ControlFileLock, LW_EXCLUSIVE);
@@ -4814,7 +4814,6 @@ SetDataChecksumsOnInProgress(void)
 	 * checksums.
 	 */
 	WaitForProcSignalBarrier(barrier);
-	UpdateControlFile();
 }
 
 /*
@@ -9101,6 +9100,7 @@ xlog_redo(XLogReaderState *record)
 		CheckPoint	checkPoint;
 		TimeLineID	replayTLI;
 		bool		new_state = false;
+		int			old_state;
 		uint64		barrier;
 
 		memcpy(&checkPoint, XLogRecGetData(record), sizeof(CheckPoint));
@@ -9140,6 +9140,7 @@ xlog_redo(XLogReaderState *record)
 		/* ControlFile->checkPointCopy always tracks the latest ckpt XID */
 		LWLockAcquire(ControlFileLock, LW_EXCLUSIVE);
 		ControlFile->checkPointCopy.nextXid = checkPoint.nextXid;
+		old_state = ControlFile->data_checksum_version;
 		ControlFile->data_checksum_version = checkPoint.dataChecksumVersion;
 		LWLockRelease(ControlFileLock);
 
@@ -9158,7 +9159,7 @@ xlog_redo(XLogReaderState *record)
 		 */
 		SpinLockAcquire(&XLogCtl->info_lck);
 		XLogCtl->data_checksum_version = checkPoint.dataChecksumVersion;
-		if (checkPoint.dataChecksumVersion != ControlFile->data_checksum_version)
+		if (checkPoint.dataChecksumVersion != old_state)
 			new_state = true;
 		SpinLockRelease(&XLogCtl->info_lck);
 

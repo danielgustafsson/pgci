@@ -217,7 +217,23 @@ $node->append_conf(
 $result = $node->restart(fail_ok => 1);
 is($result, 0, 'pg_hosts.conf: restart fails with two no_sni entries');
 
-# TODO: duplicate SNI hostnames?
+ok(unlink($node->data_dir . '/pg_hosts.conf'));
+$node->append_conf(
+	'pg_hosts.conf', qq{
+example.org server-cn-only.crt server-cn-only.key
+example.net server-cn-only.crt server-cn-only.key
+example.org server-cn-only.crt server-cn-only.key
+});
+$result = $node->restart(fail_ok => 1);
+is($result, 0, 'pg_hosts.conf: restart fails with two identical hostname entries');
+ok(unlink($node->data_dir . '/pg_hosts.conf'));
+$node->append_conf(
+	'pg_hosts.conf', qq{
+example.org server-cn-only.crt server-cn-only.key
+example.net,example.com,example.org server-cn-only.crt server-cn-only.key
+});
+$result = $node->restart(fail_ok => 1);
+is($result, 0, 'pg_hosts.conf: restart fails with two identical hostname entries in lists');
 
 # Modify pg_hosts.conf to no longer have the default host entry.
 ok(unlink($node->data_dir . '/pg_hosts.conf'));

@@ -27,6 +27,7 @@
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
 
+#include "common/hashfn.h"
 #include "common/string.h"
 #include "libpq/libpq.h"
 #include "miscadmin.h"
@@ -52,6 +53,27 @@
 #endif
 #include <openssl/x509v3.h>
 
+/*
+ * Simplehash for tracking configured hostnames to guard against duplicate
+ * entries.  Each list of hosts is traversed and added to the hash during
+ * parsing and if a duplicate error is detected an error will be thrown.
+ */
+typedef struct
+{
+	uint32		status;
+	const char *hostname;
+}			HostCacheEntry;
+static uint32 host_cache_pointer(const char *key);
+#define SH_PREFIX		host_cache
+#define SH_ELEMENT_TYPE	HostCacheEntry
+#define SH_KEY_TYPE		const char *
+#define SH_KEY			hostname
+#define SH_HASH_KEY(tb, key)	host_cache_pointer(key)
+#define SH_EQUAL(tb, a, b)		(strcmp(a, b) == 0)
+#define SH_SCOPE				static inline
+#define SH_DECLARE
+#define SH_DEFINE
+#include "lib/simplehash.h"
 
 /* default init hook can be overridden by a shared library */
 static void default_openssl_tls_init(SSL_CTX *context, bool isServerStart);
@@ -139,6 +161,7 @@ be_tls_init(bool isServerStart)
 	SSL_CTX    *context = NULL;
 	int			ssl_ver_min = -1;
 	int			ssl_ver_max = -1;
+	host_cache_hash *host_cache = NULL;
 
 	/*
 	 * Since we don't know which host we're using until the ClientHello is
@@ -269,10 +292,34 @@ be_tls_init(bool isServerStart)
 			}
 			else
 			{
+				/* Check the hostnames for duplicates */
+				if (!host_cache)
+					host_cache = host_cache_create(host_memcxt, 32, NULL);
+
+				foreach_ptr(char, hostname, host->hostnames)
+				{
+					HostCacheEntry *entry;
+					bool		found;
+
+					entry = host_cache_insert(host_cache, hostname, &found);
+					if (found)
+					{
+						ereport(isServerStart ? FATAL : LOG,
+								errcode(ERRCODE_CONFIG_FILE_ERROR),
+								errmsg("multiple entries for host \"%s\" specified",
+									   hostname),
+								errcontext("line %d of configuration file \"%s\"",
+										   host->linenumber, host->sourcefile));
+						goto error;
+					}
+					else
+						entry->hostname = pstrdup(hostname);
+				}
+
 				/*
 				 * At this point we know we have a configuration with a list
-				 * of 1..n hostnames for literal string matching with the SNI
-				 * extension from the user.
+				 * of distnct 1..n hostnames for literal string matching with
+				 * the SNI extension from the user.
 				 */
 				new_hosts->sni = lappend(new_hosts->sni, host);
 			}
@@ -2396,6 +2443,13 @@ ssl_protocol_version_to_string(int v)
 	return "(unrecognized)";
 }
 
+static uint32
+host_cache_pointer(const char *key)
+{
+	const unsigned char *host = (const unsigned char *) key;
+
+	return hash_bytes(host, strlen(key));
+}
 
 static void
 default_openssl_tls_init(SSL_CTX *context, bool isServerStart)

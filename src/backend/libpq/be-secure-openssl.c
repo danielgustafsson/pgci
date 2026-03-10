@@ -69,7 +69,7 @@ static uint32 host_cache_pointer(const char *key);
 #define SH_KEY_TYPE		const char *
 #define SH_KEY			hostname
 #define SH_HASH_KEY(tb, key)	host_cache_pointer(key)
-#define SH_EQUAL(tb, a, b)		(strcmp(a, b) == 0)
+#define SH_EQUAL(tb, a, b)		(pg_strcasecmp(a, b) == 0)
 #define SH_SCOPE				static inline
 #define SH_DECLARE
 #define SH_DEFINE

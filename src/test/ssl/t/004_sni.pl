@@ -230,7 +230,7 @@ ok(unlink($node->data_dir . '/pg_hosts.conf'));
 $node->append_conf(
 	'pg_hosts.conf', qq{
 example.org server-cn-only.crt server-cn-only.key
-example.net,example.com,example.org server-cn-only.crt server-cn-only.key
+example.net,example.com,Example.org server-cn-only.crt server-cn-only.key
 });
 $result = $node->restart(fail_ok => 1);
 is($result, 0, 'pg_hosts.conf: restart fails with two identical hostname entries in lists');

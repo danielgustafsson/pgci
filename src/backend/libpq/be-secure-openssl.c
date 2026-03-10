@@ -2446,9 +2446,16 @@ ssl_protocol_version_to_string(int v)
 static uint32
 host_cache_pointer(const char *key)
 {
-	const unsigned char *host = (const unsigned char *) key;
+	uint32 hash;
+	char *lkey = pstrdup(key);
+	int len = strlen(key);
 
-	return hash_bytes(host, strlen(key));
+	for (int i = 0; i < len; i++)
+		lkey[i] = pg_tolower(lkey[i]);
+
+	hash = string_hash((const void *) lkey, len);
+	pfree(lkey);
+	return hash;
 }
 
 static void

@@ -445,8 +445,8 @@ AbsorbDataChecksumsBarrier(ProcSignalBarrierType barrier)
 
 	/*
 	 * The current state MUST be equal to one of the EQ states defined in this
-	 * barrier condition. If the EQ states array is zero then that implies that
-	 * the current state can match any state, so fastpath check for that
+	 * barrier condition. If the EQ states array is zero then that implies
+	 * that the current state can match any state, so fastpath check for that
 	 * first.
 	 */
 	if (condition->barrier_eq_sz == 0)

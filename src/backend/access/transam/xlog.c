@@ -4842,6 +4842,7 @@ SetDataChecksumsOn(void)
 	LWLockRelease(ControlFileLock);
 
 	RequestCheckpoint(CHECKPOINT_FORCE | CHECKPOINT_WAIT | CHECKPOINT_FAST);
+
 	/*
 	 * Await state transition of "on" in all backends. When done we know that
 	 * data checksums are enabled in all backends and data checksums are both
@@ -4910,6 +4911,7 @@ SetDataChecksumsOff(void)
 		LWLockRelease(ControlFileLock);
 
 		RequestCheckpoint(CHECKPOINT_FORCE | CHECKPOINT_WAIT | CHECKPOINT_FAST);
+
 		/*
 		 * Update local state in all backends to ensure that any backend in
 		 * "on" state is changed to "inprogress-off".

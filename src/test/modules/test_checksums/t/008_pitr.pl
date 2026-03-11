@@ -19,7 +19,7 @@ if (!$ENV{PG_TEST_EXTRA} || $ENV{PG_TEST_EXTRA} !~ /\bchecksum_extended\b/)
 }
 
 my $pgbench = undef;
-my $data_checksum_state = 'off'; 
+my $data_checksum_state = 'off';
 
 my $node_primary;
 
@@ -37,14 +37,16 @@ sub flip_data_checksums
 	if ($data_checksum_state eq 'off')
 	{
 		# log LSN right before we start changing checksums
-		$lsn_pre = $node_primary->safe_psql('postgres', "SELECT pg_current_wal_lsn()");
+		$lsn_pre =
+		  $node_primary->safe_psql('postgres', "SELECT pg_current_wal_lsn()");
 		note("LSN before enabling: " . $lsn_pre . "\n");
 
 		# Wait for checksums enabled on the primary
 		enable_data_checksums($node_primary, wait => 'on');
 
 		# log LSN right after the primary flips checksums to "on"
-		$lsn_post = $node_primary->safe_psql('postgres', "SELECT pg_current_wal_lsn()");
+		$lsn_post =
+		  $node_primary->safe_psql('postgres', "SELECT pg_current_wal_lsn()");
 		note("LSN after enabling: " . $lsn_post . "\n");
 
 		$data_checksum_state = 'on';
@@ -52,7 +54,8 @@ sub flip_data_checksums
 	elsif ($data_checksum_state eq 'on')
 	{
 		# log LSN right before we start changing checksums
-		$lsn_pre = $node_primary->safe_psql('postgres', "SELECT pg_current_wal_lsn()");
+		$lsn_pre =
+		  $node_primary->safe_psql('postgres', "SELECT pg_current_wal_lsn()");
 
 		disable_data_checksums($node_primary);
 
@@ -60,7 +63,8 @@ sub flip_data_checksums
 		wait_for_checksum_state($node_primary, 'off');
 
 		# log LSN right after the primary flips checksums to "off"
-		$lsn_post = $node_primary->safe_psql('postgres', "SELECT pg_current_wal_lsn()");
+		$lsn_post =
+		  $node_primary->safe_psql('postgres', "SELECT pg_current_wal_lsn()");
 
 		$data_checksum_state = 'off';
 	}
@@ -69,7 +73,7 @@ sub flip_data_checksums
 		# This should only happen due to programmer error when hacking on the
 		# test code, but since that might pass subtly we error out.
 		BAIL_OUT('data_checksum_state variable has invalid state:'
-				 . $data_checksum_state);
+			  . $data_checksum_state);
 	}
 
 	return ($lsn_pre, $lsn_post);
@@ -104,7 +108,10 @@ sub background_rw_pgbench
 # Start a primary node with WAL archiving enabled and with enough connections
 # available to handle pgbench clients.
 $node_primary = PostgreSQL::Test::Cluster->new('primary');
-$node_primary->init(has_archiving => 1, allows_streaming => 1, no_data_checksums => 1);
+$node_primary->init(
+	has_archiving => 1,
+	allows_streaming => 1,
+	no_data_checksums => 1);
 $node_primary->append_conf(
 	'postgresql.conf',
 	qq[
@@ -115,9 +122,10 @@ $node_primary->start;
 
 # Prime the cluster with a bit of known data which we can read back to check
 # for data consistency as well as page verification faults in the logfile.
-$node_primary->safe_psql('postgres', 'CREATE TABLE t AS SELECT generate_series(1, 100000) AS a;');
+$node_primary->safe_psql('postgres',
+	'CREATE TABLE t AS SELECT generate_series(1, 100000) AS a;');
 # Initialize and start pgbench in read/write mode against the cluster
-$node_primary->command_ok(['pgbench', '-i', '-s', '100', '-q', 'postgres' ]);
+$node_primary->command_ok([ 'pgbench', '-i', '-s', '100', '-q', 'postgres' ]);
 background_rw_pgbench($node_primary->port);
 
 # Take a backup to use for PITR
@@ -146,7 +154,7 @@ recovery_target_inclusive = on
 $node_pitr->start;
 
 $node_pitr->poll_query_until('postgres', "SELECT pg_is_in_recovery() = 'f';")
-	or die "Timed out while waiting for PITR promotion";
+  or die "Timed out while waiting for PITR promotion";
 
 test_checksum_state($node_pitr, $data_checksum_state);
 my $result =
@@ -159,7 +167,6 @@ my $log = PostgreSQL::Test::Utils::slurp_file($node_pitr->logfile, 0);
 unlike(
 	$log,
 	qr/page verification failed/,
-	"no checksum validation errors in pitr log"
-);
+	"no checksum validation errors in pitr log");
 
 done_testing();

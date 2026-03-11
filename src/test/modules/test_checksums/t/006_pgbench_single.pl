@@ -140,7 +140,7 @@ sub flip_data_checksums
 		# This should only happen due to programmer error when hacking on the
 		# test code, but since that might pass subtly we error out.
 		BAIL_OUT('data_checksum_state variable has invalid state:'
-				 . $data_checksum_state);
+			  . $data_checksum_state);
 	}
 }
 

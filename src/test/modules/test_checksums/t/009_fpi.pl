@@ -38,7 +38,7 @@ $node->safe_psql('postgres', 'UPDATE t SET a = a + 1;');
 
 disable_data_checksums($node, wait => 'off');
 
-$node->append_conf( 'postgresql.conf', 'full_page_writes = off');
+$node->append_conf('postgresql.conf', 'full_page_writes = off');
 $node->restart;
 test_checksum_state($node, 'off');
 
@@ -51,7 +51,7 @@ test_checksum_state($node, 'off');
 
 enable_data_checksums($node, wait => 'on');
 
-my $result = $node->safe_psql('postgres','SELECT count(*) FROM t;');
+my $result = $node->safe_psql('postgres', 'SELECT count(*) FROM t;');
 is($result, '990003', 'Reading back all data from table t');
 
 $node->stop;
@@ -59,7 +59,6 @@ my $log = PostgreSQL::Test::Utils::slurp_file($node->logfile, 0);
 unlike(
 	$log,
 	qr/page verification failed/,
-	"no checksum validation errors in server log"
-);
+	"no checksum validation errors in server log");
 
 done_testing();

@@ -180,7 +180,7 @@
  *
  *
  * IDENTIFICATION
- *	  src/backend/postmaster/datachecksumsworker.c
+ *	  src/backend/postmaster/datachecksums_state.c
  *
  *-------------------------------------------------------------------------
  */
@@ -387,17 +387,16 @@ bool
 AbsorbDataChecksumsBarrier(ProcSignalBarrierType barrier)
 {
 	const ChecksumBarrierCondition *condition = NULL;
-	//int			current = GetLocalDataChecksumVersion();
 	int			target_state;
 	int			current = data_checksums;
 	bool		found = false;
 
 	/*
-	 * Translate the barrier conditition to the target state, doing it here
+	 * Translate the barrier condition to the target state, doing it here
 	 * instead of in the procsignal code saves the latter from knowing about
 	 * checksum states.
 	 */
-	switch(barrier)
+	switch (barrier)
 	{
 		case PROCSIGNAL_BARRIER_CHECKSUM_INPROGRESS_ON:
 			target_state = PG_DATA_CHECKSUM_INPROGRESS_ON_VERSION;
@@ -446,7 +445,7 @@ AbsorbDataChecksumsBarrier(ProcSignalBarrierType barrier)
 
 	/*
 	 * The current state MUST be equal to one of the EQ states defined in this
-	 * barrier condition. If the EQ states array is zero then that imples that
+	 * barrier condition. If the EQ states array is zero then that implies that
 	 * the current state can match any state, so fastpath check for that
 	 * first.
 	 */

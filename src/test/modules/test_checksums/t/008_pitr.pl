@@ -1,4 +1,6 @@
 
+# Copyright (c) 2026, PostgreSQL Global Development Group
+
 use strict;
 use warnings FATAL => 'all';
 

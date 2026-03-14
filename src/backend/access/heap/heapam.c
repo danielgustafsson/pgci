@@ -6018,8 +6018,7 @@ l4:
 								  &new_xmax, &new_infomask, &new_infomask2);
 
 		if (PageIsAllVisible(BufferGetPage(buf)) &&
-			visibilitymap_clear(rel, block, vmbuffer,
-								VISIBILITYMAP_ALL_FROZEN))
+			visibilitymap_clear(rel, block, vmbuffer, VISIBILITYMAP_ALL_FROZEN))
 			cleared_all_frozen = true;
 
 		START_CRIT_SECTION();

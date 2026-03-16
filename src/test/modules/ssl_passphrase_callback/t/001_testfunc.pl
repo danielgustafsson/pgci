@@ -76,4 +76,26 @@ ok(!-e "$ddir/postmaster.pid", "postgres not started with bad passphrase");
 # just in case
 $node->stop('fast');
 
+# Make sure the hook is bypassed when SNI is enabled.
+$node->append_conf(
+	'postgresql.conf', qq{
+ssl_passphrase_command = 'echo FooBaR1'
+ssl_sni = on
+});
+
+$node->start;
+
+# If the server is running, the bad ssl_passphrase.passphrase was correctly
+# ignored.
+ok(-e "$ddir/postmaster.pid", "postgres started after SNI");
+
+$node->stop('fast');
+
+$log_contents = slurp_file($log);
+
+like(
+	$log_contents,
+	qr/WARNING.*SNI is enabled; installed TLS init hook will be ignored/,
+	"server warns that init hook and SNI are incompatible");
+
 done_testing();

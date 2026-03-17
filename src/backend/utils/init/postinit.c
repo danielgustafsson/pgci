@@ -774,7 +774,7 @@ InitPostgres(const char *in_dbname, Oid dboid,
 	 * NB: Even if the postmaster handled barriers, the value might still be
 	 * stale, as it might have changed after this process forked.
 	 */
-	InitLocalDataChecksumVersion();
+	InitLocalDataChecksumState();
 
 	/*
 	 * Also set up timeout handlers needed for backend operation.  We need

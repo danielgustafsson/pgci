@@ -291,7 +291,7 @@ typedef struct xl_restore_point
 /* Information logged when data checksum level is changed */
 typedef struct xl_checksum_state
 {
-	ChecksumType new_checksumtype;
+	ChecksumStateType new_checksum_state;
 } xl_checksum_state;
 
 /* Overwrite of prior contrecord */

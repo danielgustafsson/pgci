@@ -504,8 +504,8 @@ static const struct config_enum_entry file_extend_method_options[] = {
 static const struct config_enum_entry data_checksums_options[] = {
 	{"on", PG_DATA_CHECKSUM_VERSION, true},
 	{"off", PG_DATA_CHECKSUM_OFF, true},
-	{"inprogress-on", PG_DATA_CHECKSUM_INPROGRESS_ON_VERSION, true},
-	{"inprogress-off", PG_DATA_CHECKSUM_INPROGRESS_OFF_VERSION, true},
+	{"inprogress-on", PG_DATA_CHECKSUM_INPROGRESS_ON, true},
+	{"inprogress-off", PG_DATA_CHECKSUM_INPROGRESS_OFF, true},
 	{NULL, 0, false}
 };
 

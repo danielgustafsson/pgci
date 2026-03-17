@@ -56,15 +56,15 @@ get_wal_level_string(int wal_level)
 }
 
 static const char *
-get_checksum_version_string(ChecksumType checksum)
+get_checksum_version_string(ChecksumStateType checksum)
 {
 	switch (checksum)
 	{
 		case PG_DATA_CHECKSUM_VERSION:
 			return "on";
-		case PG_DATA_CHECKSUM_INPROGRESS_OFF_VERSION:
+		case PG_DATA_CHECKSUM_INPROGRESS_OFF:
 			return "inprogress-off";
-		case PG_DATA_CHECKSUM_INPROGRESS_ON_VERSION:
+		case PG_DATA_CHECKSUM_INPROGRESS_ON:
 			return "inprogress-on";
 		case PG_DATA_CHECKSUM_OFF:
 			return "off";
@@ -85,7 +85,7 @@ xlog2_desc(StringInfo buf, XLogReaderState *record)
 		xl_checksum_state xlrec;
 
 		memcpy(&xlrec, rec, sizeof(xl_checksum_state));
-		appendStringInfoString(buf, get_checksum_version_string(xlrec.new_checksumtype));
+		appendStringInfoString(buf, get_checksum_version_string(xlrec.new_checksum_state));
 	}
 }
 
@@ -124,7 +124,7 @@ xlog_desc(StringInfo buf, XLogReaderState *record)
 						 checkpoint->oldestCommitTsXid,
 						 checkpoint->newestCommitTsXid,
 						 checkpoint->oldestActiveXid,
-						 get_checksum_version_string(checkpoint->dataChecksumVersion),
+						 get_checksum_version_string(checkpoint->dataChecksumState),
 						 (info == XLOG_CHECKPOINT_SHUTDOWN) ? "shutdown" : "online");
 	}
 	else if (info == XLOG_NEXTOID)

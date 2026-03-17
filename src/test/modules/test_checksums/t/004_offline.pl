@@ -48,9 +48,9 @@ $node->start;
 # Ensure that checksums are disabled
 test_checksum_state($node, 'off');
 
-# Create a barrier for checksumming to block on, in this case a pre-existing
-# temporary table which is kept open while processing is started. We can
-# accomplish this by setting up an interactive psql process which keeps the
+# Create a barrier for checksum enablement to block on, in this case a pre-
+# existing temporary table which is kept open while processing is started. We
+# can accomplish this by setting up an interactive psql process which keeps the
 # temporary table created as we enable checksums in another psql process.
 
 my $bsession = $node->background_psql('postgres');

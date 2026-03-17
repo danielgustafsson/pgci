@@ -36,7 +36,7 @@ SKIP:
 	  if (!$ENV{PG_TEST_EXTRA}
 		|| $ENV{PG_TEST_EXTRA} !~ /\bchecksum_extended\b/);
 
-	# Create a barrier for checksumming to block on, in this case a pre-
+	# Create a barrier for checksum enablement to block on, in this case a pre-
 	# existing temporary table which is kept open while processing is started.
 	# We can accomplish this by setting up an interactive psql process which
 	# keeps the temporary table created as we enable checksums in another psql

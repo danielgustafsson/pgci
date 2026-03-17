@@ -2999,7 +2999,7 @@ PostmasterStateMachine(void)
 									B_INVALID,
 									B_STANDALONE_BACKEND);
 
-			/* also add checksumming processes */
+			/* also add data checksums processes */
 			remainMask = btmask_add(remainMask,
 									B_DATACHECKSUMSWORKER_LAUNCHER,
 									B_DATACHECKSUMSWORKER_WORKER);

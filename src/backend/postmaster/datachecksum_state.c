@@ -4,7 +4,7 @@
  *	  Background worker for enabling or disabling data checksums online as
  *	  well as functionality for manipulating data checksum state
  *
- * When enabling data checksums on a database at initdb time or when shut down
+ * When enabling data checksums on a cluster at initdb time or when shut down
  * with pg_checksums, no extra process is required as each page is checksummed,
  * and verified, when accessed.  When enabling checksums on an already running
  * cluster, this worker will ensure that all pages are checksummed before
@@ -21,18 +21,20 @@
  * "inprogress-on" which signals that write operations MUST compute and write
  * the checksum on the data page, but during reading the checksum SHALL NOT be
  * verified. This ensures that all objects created during when checksums are
- * being enabled will have checksums set, but reads wont fail due to missing or
+ * being enabled will have checksums set, but reads won't fail due to missing or
  * invalid checksums. Invalid checksums can be present in case the cluster had
  * checksums enabled, then disabled them and updated the page while they were
  * disabled.
  *
- * The DataChecksumsWorker will compile a list of databases which exist at the
- * start of checksumming, and once all are processed will regenerate the list
- * and start over processing any new entries. Once there are no new entries on
- * the list, processing will end.  All databases MUST BE successfully processed
- * in order for data checksums to be enabled, the only exception are databases
- * which are dropped before having been processed.
-
+ * The DataChecksumsWorker will compile a list of all databases at the start,
+ * and once all are processed will regenerate the list and start over
+ * processing any new entries. Once there are no new entries on the list,
+ * processing will end.  The regenerated list is required since databases can
+ * be created concurrently with data checksum processing, using a template
+ * database which has yet to be processed. All databases MUST BE successfully
+ * processed in order for data checksums to be enabled, the only exception are
+ * databases which are dropped before having been processed.
+ *
  * Any new relation in a processed database, created during processing, will
  * see the in-progress state and will automatically be checksummed.
  *
@@ -46,13 +48,13 @@
  * 2. Disabling checksums
  * ----------------------
  * When disabling checksums, data_checksums will be set to "inprogress-off"
- * which signals that checksums are written but no longer verified. This ensure
- * that backends which have yet to move from the "on" state will still be able
- * to process data checksum validation.
+ * which signals that checksums are written but no longer need to be verified.
+ * This ensures that backends which have not yet transitioned to the
+ * "inprogress-off" state will still see valid checksums on pages.
  *
  * 3. Synchronization and Correctness
  * ----------------------------------
- * The processes involved in enabling, or disabling, data checksums in an
+ * The processes involved in enabling or disabling data checksums in an
  * online cluster must be properly synchronized with the normal backends
  * serving concurrent queries to ensure correctness. Correctness is defined
  * as the following:
@@ -74,8 +76,8 @@
  * latter with ensuring that any concurrent activity cannot break the data
  * checksum contract during processing.
  *
- * Synchronizing the state change is done with procsignal barriers, before
- * updating the controlfile with the state all other backends must absorb the
+ * Synchronizing the state change is done with procsignal barriers. Before
+ * updating the data_checksums state in the control file, all other backends must absorb the
  * barrier.  Barrier absorption will happen during interrupt processing, which
  * means that connected backends will change state at different times.  If
  * waiting for a barrier is done during startup, for example during replay, it
@@ -90,8 +92,9 @@
  * failing to validate the data checksum on the page when reading it.
  *
  * When processing starts all backends belong to one of the below sets, with
- * one set being empty:
+ * one if Bd and Bi being empty:
  *
+ * Bg: Backend updating the global state and emitting the procsignalbarrier
  * Bd: Backends in "off" state
  * Bi: Backends in "inprogress-on" state
  *
@@ -173,6 +176,9 @@
  *   * Restartability (not necessarily with page granularity).
  *   * Avoid processing databases which were created during inprogress-on.
  *     Right now all databases are processed regardless to be safe.
+ *   * Teach CREATE DATABASE to calculate checksums for databases created
+ *     during inprogress-on with a template database which has yet to be
+ *     processed.
  *
  *
  * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
@@ -229,8 +235,7 @@
  * must not be in.
  *
  * The reason for this explicit checking is to ensure that processing cannot
- * be started such that it breaks the assumptions of the state machine.  See
- * datachecksumsworker.c for a lengthy discussion on these states.
+ * be started such that it breaks the assumptions of the state machine.
  *
  * MAX_BARRIER_CONDITIONS must match largest number of sets in barrier_eq and
  * barrier_ne in the below checksum_barriers definition.
@@ -252,10 +257,40 @@ typedef struct ChecksumBarrierCondition
 
 static const ChecksumBarrierCondition checksum_barriers[4] =
 {
-	{PG_DATA_CHECKSUM_OFF, {PG_DATA_CHECKSUM_INPROGRESS_ON_VERSION, PG_DATA_CHECKSUM_INPROGRESS_OFF_VERSION}, 2, {PG_DATA_CHECKSUM_VERSION}, 1},
-	{PG_DATA_CHECKSUM_VERSION, {PG_DATA_CHECKSUM_INPROGRESS_ON_VERSION}, 1, {0}, 0},
-	{PG_DATA_CHECKSUM_INPROGRESS_ON_VERSION, {0}, 0, {PG_DATA_CHECKSUM_VERSION}, 1},
-	{PG_DATA_CHECKSUM_INPROGRESS_OFF_VERSION, {PG_DATA_CHECKSUM_VERSION}, 1, {0}, 0},
+	/*
+	 * When disabling checksums, either inprogress state is Ok but checksums
+	 * must not be in the enabled state.
+	 */
+	{
+		.target = PG_DATA_CHECKSUM_OFF,
+		.barrier_eq = {PG_DATA_CHECKSUM_INPROGRESS_ON, PG_DATA_CHECKSUM_INPROGRESS_OFF},
+		.barrier_eq_sz = 2,
+		.barrier_ne = {PG_DATA_CHECKSUM_VERSION},
+		.barrier_ne_sz = 1
+	},
+	/* When enabling the current state must be inprogress-on */
+	{
+		.target = PG_DATA_CHECKSUM_VERSION,
+		.barrier_eq = {PG_DATA_CHECKSUM_INPROGRESS_ON},
+		.barrier_eq_sz = 1,
+		{0}, 0
+	},
+	/*
+	 * When moving to inprogress-on the current state cannot enabled, but
+	 * when moving to inprogress-off the current state must be enabled.
+	 */
+	{
+		.target = PG_DATA_CHECKSUM_INPROGRESS_ON,
+		{0}, 0,
+		.barrier_ne = {PG_DATA_CHECKSUM_VERSION},
+		.barrier_ne_sz = 1
+	},
+	{
+		.target = PG_DATA_CHECKSUM_INPROGRESS_OFF,
+		.barrier_eq = {PG_DATA_CHECKSUM_VERSION},
+		.barrier_eq_sz = 1,
+		{0}, 0
+	},
 };
 
 /*
@@ -399,13 +434,13 @@ AbsorbDataChecksumsBarrier(ProcSignalBarrierType barrier)
 	switch (barrier)
 	{
 		case PROCSIGNAL_BARRIER_CHECKSUM_INPROGRESS_ON:
-			target_state = PG_DATA_CHECKSUM_INPROGRESS_ON_VERSION;
+			target_state = PG_DATA_CHECKSUM_INPROGRESS_ON;
 			break;
 		case PROCSIGNAL_BARRIER_CHECKSUM_ON:
 			target_state = PG_DATA_CHECKSUM_VERSION;
 			break;
 		case PROCSIGNAL_BARRIER_CHECKSUM_INPROGRESS_OFF:
-			target_state = PG_DATA_CHECKSUM_INPROGRESS_OFF_VERSION;
+			target_state = PG_DATA_CHECKSUM_INPROGRESS_OFF;
 			break;
 		case PROCSIGNAL_BARRIER_CHECKSUM_OFF:
 			target_state = PG_DATA_CHECKSUM_OFF;
@@ -427,7 +462,7 @@ AbsorbDataChecksumsBarrier(ProcSignalBarrierType barrier)
 	 */
 	if (RecoveryInProgress())
 	{
-		SetLocalDataChecksumVersion(target_state);
+		SetLocalDataChecksumState(target_state);
 		return true;
 	}
 
@@ -480,7 +515,7 @@ AbsorbDataChecksumsBarrier(ProcSignalBarrierType barrier)
 				errmsg("incorrect data checksum state %i for target state %i",
 					   current, target_state));
 
-	SetLocalDataChecksumVersion(target_state);
+	SetLocalDataChecksumState(target_state);
 	return true;
 }
 
@@ -644,7 +679,7 @@ ProcessSingleRelationFork(Relation reln, ForkNumber forkNum, BufferAccessStrateg
 		return false;
 
 	/* Report the current relation to pgstat_activity */
-	snprintf(activity, sizeof(activity) - 1, "processing: %s.%s (%s, %dblocks)",
+	snprintf(activity, sizeof(activity) - 1, "processing: %s.%s (%s, %u blocks)",
 			 relns, RelationGetRelationName(reln), forkNames[forkNum], numblocks);
 	pgstat_report_activity(STATE_RUNNING, activity);
 	pgstat_progress_update_param(PROGRESS_DATACHECKSUMS_BLOCKS_TOTAL, numblocks);
@@ -658,7 +693,7 @@ ProcessSingleRelationFork(Relation reln, ForkNumber forkNum, BufferAccessStrateg
 	{
 		Buffer		buf = ReadBufferExtended(reln, forkNum, blknum, RBM_NORMAL, strategy);
 
-		/* Need to get an exclusive lock before we can flag as dirty */
+		/* Need to get an exclusive lock to mark the buffer as dirty */
 		LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
 
 		/*
@@ -666,7 +701,7 @@ ProcessSingleRelationFork(Relation reln, ForkNumber forkNum, BufferAccessStrateg
 		 * re-write the page to WAL even if the checksum hasn't changed,
 		 * because if there is a replica it might have a slightly different
 		 * version of the page with an invalid checksum, caused by unlogged
-		 * changes (e.g. hintbits) on the master happening while checksums
+		 * changes (e.g. hintbits) on the primary happening while checksums
 		 * were off. This can happen if there was a valid checksum on the page
 		 * at one point in the past, so only when checksums are first on, then
 		 * off, and then turned on again.  TODO: investigate if this could be
@@ -682,8 +717,7 @@ ProcessSingleRelationFork(Relation reln, ForkNumber forkNum, BufferAccessStrateg
 
 		/*
 		 * This is the only place where we check if we are asked to abort, the
-		 * abortion will bubble up from here. It's safe to check this without
-		 * a lock, because if we miss it being set, we will try again soon.
+		 * abortion will bubble up from here.
 		 */
 		Assert(operation == ENABLE_DATACHECKSUMS);
 		LWLockAcquire(DataChecksumsWorkerLock, LW_SHARED);
@@ -827,10 +861,9 @@ ProcessDatabase(DataChecksumsWorkerDatabase *db)
 	/*
 	 * If the postmaster crashed we cannot end up with a processed database so
 	 * we have no alternative other than exiting. When enabling checksums we
-	 * won't at this time have changed the pg_control version to enabled so
-	 * when the cluster comes back up processing will have to be restarted.
-	 * When disabling, the pg_control version will be set to off before this
-	 * so when the cluster comes up checksums will be off as expected.
+	 * won't at this time have changed the data checksums state in pg_control
+	 * to enabled so when the cluster comes back up processing will have to be
+	 * restarted.
 	 */
 	if (status == BGWH_POSTMASTER_DIED)
 		ereport(FATAL,
@@ -879,6 +912,8 @@ ProcessDatabase(DataChecksumsWorkerDatabase *db)
 static void
 launcher_exit(int code, Datum arg)
 {
+	abort_requested = false;
+
 	if (launcher_running)
 	{
 		LWLockAcquire(DataChecksumsWorkerLock, LW_EXCLUSIVE);
@@ -1325,7 +1360,7 @@ ProcessAllDatabases(void)
 	 * Get a fresh list of databases to detect the second case where the
 	 * database was dropped before we had started processing it. If a database
 	 * still exists, but enabling checksums failed then we fail the entire
-	 * checksumming process and exit with an error.
+	 * checksum enablement process and exit with an error.
 	 */
 	DatabaseList = BuildDatabaseList();
 

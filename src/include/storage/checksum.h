@@ -16,18 +16,18 @@
 #include "storage/block.h"
 
 /*
- * Checksum version 0 is used for when data checksums are disabled (OFF).
- * PG_DATA_CHECKSUM_VERSION defines that data checksums are enabled in the
- * cluster and PG_DATA_CHECKSUM_INPROGRESS_{ON|OFF}_VERSION defines that data
- * checksums are either currently being enabled or disabled.
+ * Checksum state 0 is used for when data checksums are disabled (OFF).
+ * PG_DATA_CHECKSUM_INPROGRESS_{ON|OFF} defines that data checksums are either
+ * currently being enabled or disabled, and PG_DATA_CHECKSUM_VERSION defines
+ * that data checksums are enabled.
  */
-typedef enum ChecksumType
+typedef enum ChecksumStateType
 {
 	PG_DATA_CHECKSUM_OFF = 0,
+	PG_DATA_CHECKSUM_INPROGRESS_OFF,
+	PG_DATA_CHECKSUM_INPROGRESS_ON,
 	PG_DATA_CHECKSUM_VERSION,
-	PG_DATA_CHECKSUM_INPROGRESS_ON_VERSION,
-	PG_DATA_CHECKSUM_INPROGRESS_OFF_VERSION
-} ChecksumType;
+} ChecksumStateType;
 
 /*
  * Compute the checksum for a Postgres page.  The page must be aligned on a

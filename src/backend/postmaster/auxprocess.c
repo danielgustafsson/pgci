@@ -86,7 +86,7 @@ AuxiliaryProcessMainCommon(void)
 	 * NB: Even if the postmaster handled barriers, the value might still be
 	 * stale, as it might have changed after this process forked.
 	 */
-	InitLocalDataChecksumVersion();
+	InitLocalDataChecksumState();
 
 	/*
 	 * Auxiliary processes don't run transactions, but they may need a

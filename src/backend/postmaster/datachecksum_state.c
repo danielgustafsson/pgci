@@ -275,9 +275,10 @@ static const ChecksumBarrierCondition checksum_barriers[4] =
 		.barrier_eq_sz = 1,
 		{0}, 0
 	},
+
 	/*
-	 * When moving to inprogress-on the current state cannot enabled, but
-	 * when moving to inprogress-off the current state must be enabled.
+	 * When moving to inprogress-on the current state cannot enabled, but when
+	 * moving to inprogress-off the current state must be enabled.
 	 */
 	{
 		.target = PG_DATA_CHECKSUM_INPROGRESS_ON,

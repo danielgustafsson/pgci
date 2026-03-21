@@ -53,6 +53,7 @@ command_fails_like(
 # case exercising the new rmgr below.
 command_like(
 	[ 'pg_waldump', '--rmgr=list' ], qr/^XLOG
+XLOG2
 Transaction
 Storage
 CLOG

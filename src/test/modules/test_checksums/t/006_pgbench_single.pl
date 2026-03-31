@@ -162,8 +162,9 @@ $node->safe_psql('postgres', 'CREATE EXTENSION test_checksums;');
 $node->safe_psql('postgres',
 	"CREATE TABLE t AS SELECT generate_series(1, 100000) AS a;");
 # Initialize pgbench
+my $scalefactor = ($extended ? 100 : 1);
 $node->command_ok(
-	[ 'pgbench', '-p', $node->port, '-i', '-s', '100', '-q', 'postgres' ]);
+	[ 'pgbench', '-p', $node->port, '-i', '-s', $scalefactor, '-q', 'postgres' ]);
 # Start the test suite with pgbench running.
 background_rw_pgbench($node->port);
 

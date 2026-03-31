@@ -127,9 +127,10 @@ $node_primary->start;
 $node_primary->safe_psql('postgres',
 	'CREATE TABLE t AS SELECT generate_series(1, 100000) AS a;');
 # Initialize and start pgbench in read/write mode against the cluster
+my $scalefactor = ($extended ? 100 : 1);
 $node_primary->command_ok(
 	[
-		'pgbench', '-p', $node_primary->port, '-i', '-s', '100', '-q',
+		'pgbench', '-p', $node_primary->port, '-i', '-s', $scalefactor, '-q',
 		'postgres'
 	]);
 background_rw_pgbench($node_primary->port);

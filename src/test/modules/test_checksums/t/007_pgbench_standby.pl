@@ -214,9 +214,10 @@ primary_slot_name = '$node_primary_slot'
 $node_standby->start;
 
 # Initialize pgbench and wait for the objects to be created on the standby
+my $scalefactor = ($extended ? 100 : 1);
 $node_primary->command_ok(
 	[
-		'pgbench', '-p', $node_primary->port, '-i', '-s', '100', '-q',
+		'pgbench', '-p', $node_primary->port, '-i', '-s', $scalefactor, '-q',
 		'postgres'
 	]);
 $node_primary->wait_for_catchup($node_standby, 'replay');

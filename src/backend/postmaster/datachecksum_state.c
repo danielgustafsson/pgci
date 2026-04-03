@@ -868,18 +868,16 @@ launcher_exit(int code, Datum arg)
 {
 	abort_requested = false;
 
-	LWLockAcquire(DataChecksumsWorkerLock, LW_EXCLUSIVE);
 	if (launcher_running)
 	{
-		launcher_running = false;
-		DataChecksumState->launcher_running = false;
-
+		LWLockAcquire(DataChecksumsWorkerLock, LW_EXCLUSIVE);
 		if (DataChecksumState->worker_pid != InvalidPid)
 		{
 			ereport(LOG,
 					errmsg("data checksums launcher exiting while worker is still running, signalling worker"));
 			kill(DataChecksumState->worker_pid, SIGTERM);
 		}
+		LWLockRelease(DataChecksumsWorkerLock);
 	}
 
 	/*
@@ -889,6 +887,9 @@ launcher_exit(int code, Datum arg)
 	if (DataChecksumsInProgressOn())
 		SetDataChecksumsOff();
 
+	LWLockAcquire(DataChecksumsWorkerLock, LW_EXCLUSIVE);
+	launcher_running = false;
+	DataChecksumState->launcher_running = false;
 	LWLockRelease(DataChecksumsWorkerLock);
 }
 

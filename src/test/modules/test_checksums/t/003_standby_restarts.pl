@@ -41,7 +41,7 @@ $node_standby->start;
 $node_primary->safe_psql('postgres',
 	"CREATE TABLE t AS SELECT generate_series(1,10000) AS a;");
 
-# Wait for standbys to catch up
+# Wait for standby to catch up
 $node_primary->wait_for_catchup($node_standby, 'replay',
 	$node_primary->lsn('insert'));
 
@@ -54,7 +54,7 @@ test_checksum_state($node_standby, 'off');
 # standby change state.
 #
 
-# Initoate enabling of checksums and ensure that the primary switches to
+# Initiate enabling of checksums and ensure that the primary switches to
 # either "inprogress-on" or "on"
 enable_data_checksums($node_primary);
 my $result = $node_primary->poll_query_until(

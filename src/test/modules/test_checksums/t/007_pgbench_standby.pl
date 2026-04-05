@@ -178,6 +178,7 @@ sub flip_data_checksums
 		$node_primary->wait_for_catchup($node_standby, 'replay');
 
 		# Wait for checksums disabled on the primary and standby
+		random_sleep() if ($extended);
 		wait_for_checksum_state($node_primary, 'off');
 		wait_for_checksum_state($node_standby, 'off');
 
@@ -185,9 +186,6 @@ sub flip_data_checksums
 		$result =
 		  $node_primary->safe_psql('postgres', "SELECT pg_current_wal_lsn()");
 		note("LSN after disabling: " . $result . "\n");
-
-		random_sleep() if ($extended);
-		wait_for_checksum_state($node_standby, 'off');
 
 		$data_checksum_state = 'off';
 	}

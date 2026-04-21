@@ -4763,6 +4763,7 @@ SetDataChecksumsOnInProgress(void)
 	 * The state transition is performed in a critical section with
 	 * checkpoints held off to provide crash safety.
 	 */
+	INJECTION_POINT("datachecksums-enable-inprogress-checksums-delay", NULL);
 	START_CRIT_SECTION();
 	MyProc->delayChkptFlags |= DELAY_CHKPT_START;
 
@@ -4781,6 +4782,7 @@ SetDataChecksumsOnInProgress(void)
 
 	MyProc->delayChkptFlags &= ~DELAY_CHKPT_START;
 	END_CRIT_SECTION();
+	INJECTION_POINT("datachecksums-enable-inprogress-checksums-after-barrier-emit", NULL);
 
 	WaitForProcSignalBarrier(barrier);
 }
@@ -4854,8 +4856,10 @@ SetDataChecksumsOn(void)
 
 	MyProc->delayChkptFlags &= ~DELAY_CHKPT_START;
 	END_CRIT_SECTION();
+	INJECTION_POINT("datachecksums-enable-checksums-after-barrier-emit", NULL);
 
 	RequestCheckpoint(CHECKPOINT_FORCE | CHECKPOINT_WAIT | CHECKPOINT_FAST);
+	INJECTION_POINT("datachecksums-enable-checksums-after-checkpoint", NULL);
 	WaitForProcSignalBarrier(barrier);
 }
 
@@ -4898,6 +4902,7 @@ SetDataChecksumsOff(void)
 	{
 		SpinLockRelease(&XLogCtl->info_lck);
 
+		INJECTION_POINT("datachecksums-disable-inprogress-checksums-delay", NULL);
 		START_CRIT_SECTION();
 		MyProc->delayChkptFlags |= DELAY_CHKPT_START;
 
@@ -4916,8 +4921,10 @@ SetDataChecksumsOff(void)
 
 		MyProc->delayChkptFlags &= ~DELAY_CHKPT_START;
 		END_CRIT_SECTION();
+		INJECTION_POINT("datachecksums-disable-inprogress-checksums-after-barrier-emit", NULL);
 
 		RequestCheckpoint(CHECKPOINT_FORCE | CHECKPOINT_WAIT | CHECKPOINT_FAST);
+		INJECTION_POINT("datachecksums-disable-inprogress-checksums-after-checkpoint", NULL);
 		WaitForProcSignalBarrier(barrier);
 
 		/*
@@ -4936,6 +4943,7 @@ SetDataChecksumsOff(void)
 		SpinLockRelease(&XLogCtl->info_lck);
 	}
 
+	INJECTION_POINT("datachecksums-disable-checksums-delay", NULL);
 	START_CRIT_SECTION();
 	/* Ensure that we don't incur a checkpoint during disabling checksums */
 	MyProc->delayChkptFlags |= DELAY_CHKPT_START;
@@ -4955,8 +4963,10 @@ SetDataChecksumsOff(void)
 
 	MyProc->delayChkptFlags &= ~DELAY_CHKPT_START;
 	END_CRIT_SECTION();
+	INJECTION_POINT("datachecksums-disable-checksums-after-barrier-emit", NULL);
 
 	RequestCheckpoint(CHECKPOINT_FORCE | CHECKPOINT_WAIT | CHECKPOINT_FAST);
+	INJECTION_POINT("datachecksums-disable-checksums-after-checkpoint", NULL);
 	WaitForProcSignalBarrier(barrier);
 }
 

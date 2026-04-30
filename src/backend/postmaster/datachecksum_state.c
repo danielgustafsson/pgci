@@ -1569,6 +1569,7 @@ DataChecksumsWorkerMain(Datum arg)
 	rels_done = 0;
 	foreach_oid(reloid, RelationList)
 	{
+		bool costs_updated = false;
 		if (!ProcessSingleRelationByOid(reloid, strategy))
 		{
 			aborted = true;
@@ -1583,22 +1584,32 @@ DataChecksumsWorkerMain(Datum arg)
 		if (abort_requested)
 			break;
 
-		/* Check if the cost settings changed during runtime */
+		/*
+		 * Check if the cost settings changed during runtime and if so, update
+		 * to reflect the new values and signal that the access strategy needs
+		 * to be refreshed.
+		 */
 		LWLockAcquire(DataChecksumsWorkerLock, LW_EXCLUSIVE);
 		if ((DataChecksumState->launch_cost_delay != DataChecksumState->cost_delay)
 			|| (DataChecksumState->launch_cost_limit != DataChecksumState->cost_limit))
 		{
+			costs_updated = true;
 			VacuumCostDelay = DataChecksumState->launch_cost_delay;
 			VacuumCostLimit = DataChecksumState->launch_cost_limit;
 			VacuumCostActive = (VacuumCostDelay > 0);
 
-			FreeAccessStrategy(strategy);
-			strategy = GetAccessStrategy(BAS_VACUUM);
 			DataChecksumState->cost_delay = DataChecksumState->launch_cost_delay;
 			DataChecksumState->cost_limit = DataChecksumState->launch_cost_limit;
 		}
+		else
+			costs_updated = false;
 		LWLockRelease(DataChecksumsWorkerLock);
 
+		if (costs_updated)
+		{
+			FreeAccessStrategy(strategy);
+			strategy = GetAccessStrategy(BAS_VACUUM);
+		}
 	}
 
 	list_free(RelationList);

@@ -829,14 +829,17 @@ ProcessDatabase(DataChecksumsWorkerDatabase *db)
 		 * If the worker managed to start, and stop, before we got to waiting
 		 * for it we can see a STOPPED status here without it being a failure.
 		 */
+		LWLockAcquire(DataChecksumsWorkerLock, LW_SHARED);
 		if (DataChecksumState->success == DATACHECKSUMSWORKER_SUCCESSFUL)
 		{
+			LWLockRelease(DataChecksumsWorkerLock);
 			pgstat_report_activity(STATE_IDLE, NULL);
 			LWLockAcquire(DataChecksumsWorkerLock, LW_EXCLUSIVE);
 			DataChecksumState->worker_pid = InvalidPid;
 			LWLockRelease(DataChecksumsWorkerLock);
 			return DataChecksumState->success;
 		}
+		LWLockRelease(DataChecksumsWorkerLock);
 
 		ereport(WARNING,
 				errmsg("could not start background worker for enabling data checksums in database \"%s\"",
@@ -888,10 +891,12 @@ ProcessDatabase(DataChecksumsWorkerDatabase *db)
 					   db->dbname),
 				errhint("Restart the database and restart data checksum processing by calling pg_enable_data_checksums()."));
 
+	LWLockAcquire(DataChecksumsWorkerLock, LW_SHARED);
 	if (DataChecksumState->success == DATACHECKSUMSWORKER_ABORTED)
 		ereport(LOG,
 				errmsg("data checksums processing was aborted in database \"%s\"",
 					   db->dbname));
+	LWLockRelease(DataChecksumsWorkerLock);
 
 	pgstat_report_activity(STATE_IDLE, NULL);
 	LWLockAcquire(DataChecksumsWorkerLock, LW_EXCLUSIVE);

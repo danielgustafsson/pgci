@@ -115,6 +115,77 @@ $result =
   $node_primary->safe_psql('postgres', "SELECT count(a) FROM t WHERE a > 1");
 is($result, "19998", 'ensure we can safely read all data without checksums');
 
+# ---------------------------------------------------------------------------
+# Test that enabling checksums does not emit WAL for unlogged relations.
+# Unlogged relations are wiped on recovery, so FPIs for them would be
+# pointless and waste WAL traffic / standby I/O.
+#
+
+$node_primary->safe_psql('postgres',
+	'CREATE UNLOGGED TABLE unlogged_tbl AS SELECT generate_series(1,1000) AS a;');
+$node_primary->wait_for_catchup($node_standby, 'replay',
+	$node_primary->lsn('insert'));
+
+# Get the relfilenode and database OID so we can search the WAL for it
+my $unlogged_rfn = $node_primary->safe_psql('postgres',
+	"SELECT relfilenode FROM pg_class WHERE relname = 'unlogged_tbl';");
+my $db_oid = $node_primary->safe_psql('postgres',
+	"SELECT oid FROM pg_database WHERE datname = 'postgres';");
+
+# Verify the standby only has the init fork (no main fork)
+my $standby_datadir = $node_standby->data_dir;
+ok(!-f "$standby_datadir/base/$db_oid/$unlogged_rfn",
+	'standby has no main fork for unlogged table before enable');
+
+# Re-enable data checksums
+enable_data_checksums($node_primary, wait => 'on');
+wait_for_checksum_state($node_standby, 'on');
+
+# After standby replays, the unlogged main file must still not exist.
+# If the bug were present, FPI replay would materialize the full table.
+$node_primary->wait_for_catchup($node_standby, 'replay',
+	$node_primary->lsn('insert'));
+ok(!-f "$standby_datadir/base/$db_oid/$unlogged_rfn",
+	'standby has no main fork for unlogged table after enable');
+
+# Verify unlogged relation size is 0 on the standby (main fork missing)
+my $standby_size = $node_standby->safe_psql('postgres',
+	"SELECT pg_relation_size('unlogged_tbl', 'main');");
+is($standby_size, '0',
+	'unlogged table has zero size on standby after checksum enable');
+
+# Unlogged table should still be readable on primary
+$result = $node_primary->safe_psql('postgres',
+	'SELECT count(*) FROM unlogged_tbl;');
+is($result, '1000',
+	'unlogged table readable on primary after checksum enable');
+
+# Alter persistence to to logged, and make sure we can read it on both the
+# primary and standby without any page verification errors in the logfiles.
+$node_primary->safe_psql('postgres', 'ALTER TABLE unlogged_tbl SET logged;');
+$node_primary->wait_for_catchup($node_standby, 'replay',
+	$node_primary->lsn('insert'));
+
+$result = $node_primary->safe_psql('postgres', 'SELECT sum(a) FROM unlogged_tbl;');
+is($result, '500500', 'previously unlogged table can be read on primary');
+$result = $node_standby->safe_psql('postgres', 'SELECT sum(a) FROM unlogged_tbl;');
+is($result, '500500', 'previously unlogged table can be read on standby');
+
 $node_standby->stop;
 $node_primary->stop;
+
+# Perform one final pass over the logs and hunt for unexpected errors
+my $log =
+  PostgreSQL::Test::Utils::slurp_file($node_primary->logfile, 0);
+unlike(
+	$log,
+	qr/page verification failed,.+\d$/,
+	"no checksum validation errors in primary log");
+$log =
+  PostgreSQL::Test::Utils::slurp_file($node_standby->logfile, 0);
+unlike(
+	$log,
+	qr/page verification failed,.+\d$/,
+	"no checksum validation errors in standby log");
+
 done_testing();

@@ -385,7 +385,8 @@ extern ArrayType *array_set(ArrayType *array, int nSubscripts, int *indx,
 
 extern Datum array_map(Datum arrayd,
 					   ExprState *exprstate, ExprContext *econtext,
-					   Oid retType, ArrayMapState *amstate);
+					   Oid retType, ArrayMapState *amstate,
+					   Datum *transform_source, bool *transform_source_isnull);
 
 extern void array_bitmap_copy(uint8 *destbitmap, int destoffset,
 							  const uint8 *srcbitmap, int srcoffset,

@@ -493,6 +493,8 @@ typedef struct ExprEvalStep
 			ExprState  *elemexprstate;	/* null if no per-element work */
 			Oid			resultelemtype; /* element type of result array */
 			struct ArrayMapState *amstate;	/* workspace for array_map */
+			Datum	   *source_value;  /* for array_map to write elements */
+			bool	   *source_isnull;
 		}			arraycoerce;
 
 		/* for EEOP_ROW */
@@ -780,6 +782,36 @@ typedef struct ExprEvalStep
 StaticAssertDecl(sizeof(ExprEvalStep) <= 64,
 				 "size of ExprEvalStep exceeds 64 bytes");
 
+typedef struct ExprStateBuilder
+{
+	uint8	flags;
+
+	int		steps_len;			/* number of steps currently */
+	int		steps_alloc;		/* allocated length of steps array */
+
+	struct PlanState *parent;	/* parent PlanState node, if any */
+	ParamListInfo	ext_params;	/* for compiling EXT_PARAMS nodes */
+
+	Datum *innermost_caseval;
+	bool *innermost_casenull;
+	Datum *innermost_domainval;
+	bool *innermost_domainnull;
+
+	ExprEvalStep *steps;
+
+	/*
+	 * For expression nodes that support soft errors. Should be set to NULL if
+	 * the caller wants errors to be thrown. Callers that do not want errors
+	 * thrown should set it to a valid ErrorSaveContext before calling
+	 * ExecInitExprRec().
+	 */
+	ErrorSaveContext *escontext;
+
+	/* original expression tree, for debugging only */
+	Expr *expr;
+
+} ExprStateBuilder;
+
 
 /* Non-inline data for container operations */
 typedef struct SubscriptingRefState
@@ -838,10 +870,10 @@ typedef struct JsonConstructorExprState
 
 
 /* functions in execExpr.c */
-extern void ExprEvalPushStep(ExprState *es, const ExprEvalStep *s);
+extern void ExprEvalPushStep(ExprStateBuilder *esb, const ExprEvalStep *s);
 
 /* functions in execExprInterp.c */
-extern void ExecReadyInterpretedExpr(ExprState *state);
+extern void ExecReadyInterpretedExpr(ExprState *state, ExprStateBuilder *esb);
 extern ExprEvalOp ExecEvalStepOp(ExprState *state, ExprEvalStep *op);
 
 extern Datum ExecInterpExprStillValid(ExprState *state, ExprContext *econtext, bool *isNull);

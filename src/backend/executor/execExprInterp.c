@@ -249,22 +249,22 @@ typedef struct ScalarArrayOpExprHashTable
  * Prepare ExprState for interpreted execution.
  */
 void
-ExecReadyInterpretedExpr(ExprState *state)
+ExecReadyInterpretedExpr(ExprState *state, ExprStateBuilder *esb)
 {
 	/* Ensure one-time interpreter setup has been done */
 	ExecInitInterpreter();
 
 	/* Simple validity checks on expression */
-	Assert(state->steps_len >= 1);
-	Assert(state->steps[state->steps_len - 1].opcode == EEOP_DONE_RETURN ||
-		   state->steps[state->steps_len - 1].opcode == EEOP_DONE_NO_RETURN);
+	Assert(esb->steps_len >= 1);
+	Assert(esb->steps[esb->steps_len - 1].opcode == EEOP_DONE_RETURN ||
+		   esb->steps[esb->steps_len - 1].opcode == EEOP_DONE_NO_RETURN);
 
 	/*
 	 * Don't perform redundant initialization. This is unreachable in current
 	 * cases, but might be hit if there's additional expression evaluation
 	 * methods that rely on interpreted execution to work.
 	 */
-	if (state->flags & EEO_FLAG_INTERPRETER_INITIALIZED)
+	if (esb->flags & EEO_FLAG_INTERPRETER_INITIALIZED)
 		return;
 
 	/*
@@ -276,26 +276,26 @@ ExecReadyInterpretedExpr(ExprState *state)
 	state->evalfunc = ExecInterpExprStillValid;
 
 	/* DIRECT_THREADED should not already be set */
-	Assert((state->flags & EEO_FLAG_DIRECT_THREADED) == 0);
+	Assert((esb->flags & EEO_FLAG_DIRECT_THREADED) == 0);
 
 	/*
 	 * There shouldn't be any errors before the expression is fully
 	 * initialized, and even if so, it'd lead to the expression being
 	 * abandoned.  So we can set the flag now and save some code.
 	 */
-	state->flags |= EEO_FLAG_INTERPRETER_INITIALIZED;
+	esb->flags |= EEO_FLAG_INTERPRETER_INITIALIZED;
 
 	/*
 	 * Select fast-path evalfuncs for very simple expressions.  "Starting up"
 	 * the full interpreter is a measurable overhead for these, and these
 	 * patterns occur often enough to be worth optimizing.
 	 */
-	if (state->steps_len == 5)
+	if (esb->steps_len == 5)
 	{
-		ExprEvalOp	step0 = state->steps[0].opcode;
-		ExprEvalOp	step1 = state->steps[1].opcode;
-		ExprEvalOp	step2 = state->steps[2].opcode;
-		ExprEvalOp	step3 = state->steps[3].opcode;
+		ExprEvalOp	step0 = esb->steps[0].opcode;
+		ExprEvalOp	step1 = esb->steps[1].opcode;
+		ExprEvalOp	step2 = esb->steps[2].opcode;
+		ExprEvalOp	step3 = esb->steps[3].opcode;
 
 		if (step0 == EEOP_INNER_FETCHSOME &&
 			step1 == EEOP_HASHDATUM_SET_INITVAL &&
@@ -306,11 +306,11 @@ ExecReadyInterpretedExpr(ExprState *state)
 			return;
 		}
 	}
-	else if (state->steps_len == 4)
+	else if (esb->steps_len == 4)
 	{
-		ExprEvalOp	step0 = state->steps[0].opcode;
-		ExprEvalOp	step1 = state->steps[1].opcode;
-		ExprEvalOp	step2 = state->steps[2].opcode;
+		ExprEvalOp	step0 = esb->steps[0].opcode;
+		ExprEvalOp	step1 = esb->steps[1].opcode;
+		ExprEvalOp	step2 = esb->steps[2].opcode;
 
 		if (step0 == EEOP_OUTER_FETCHSOME &&
 			step1 == EEOP_OUTER_VAR &&
@@ -334,10 +334,10 @@ ExecReadyInterpretedExpr(ExprState *state)
 			return;
 		}
 	}
-	else if (state->steps_len == 3)
+	else if (esb->steps_len == 3)
 	{
-		ExprEvalOp	step0 = state->steps[0].opcode;
-		ExprEvalOp	step1 = state->steps[1].opcode;
+		ExprEvalOp	step0 = esb->steps[0].opcode;
+		ExprEvalOp	step1 = esb->steps[1].opcode;
 
 		if (step0 == EEOP_INNER_FETCHSOME &&
 			step1 == EEOP_INNER_VAR)
@@ -396,9 +396,9 @@ ExecReadyInterpretedExpr(ExprState *state)
 			return;
 		}
 	}
-	else if (state->steps_len == 2)
+	else if (esb->steps_len == 2)
 	{
-		ExprEvalOp	step0 = state->steps[0].opcode;
+		ExprEvalOp	step0 = esb->steps[0].opcode;
 
 		if (step0 == EEOP_CONST)
 		{
@@ -443,14 +443,14 @@ ExecReadyInterpretedExpr(ExprState *state)
 	 * In the direct-threaded implementation, replace each opcode with the
 	 * address to jump to.  (Use ExecEvalStepOp() to get back the opcode.)
 	 */
-	for (int off = 0; off < state->steps_len; off++)
+	for (int off = 0; off < esb->steps_len; off++)
 	{
-		ExprEvalStep *op = &state->steps[off];
+		ExprEvalStep *op = &esb->steps[off];
 
 		op->opcode = EEO_OPCODE(op->opcode);
 	}
 
-	state->flags |= EEO_FLAG_DIRECT_THREADED;
+	esb->flags |= EEO_FLAG_DIRECT_THREADED;
 #endif							/* EEO_USE_COMPUTED_GOTO */
 
 	state->evalfunc_private = ExecInterpExpr;
@@ -2328,7 +2328,7 @@ CheckExprStillValid(ExprState *state, ExprContext *econtext)
 	oldslot = econtext->ecxt_oldtuple;
 	newslot = econtext->ecxt_newtuple;
 
-	for (int i = 0; i < state->steps_len; i++)
+	for (int i = 0; i < state->steps_final_len; i++)
 	{
 		ExprEvalStep *op = &state->steps[i];
 
@@ -3653,7 +3653,9 @@ ExecEvalArrayCoerce(ExprState *state, ExprEvalStep *op, ExprContext *econtext)
 							  op->d.arraycoerce.elemexprstate,
 							  econtext,
 							  op->d.arraycoerce.resultelemtype,
-							  op->d.arraycoerce.amstate);
+							  op->d.arraycoerce.amstate,
+							  op->d.arraycoerce.source_value,
+							  op->d.arraycoerce.source_isnull);
 }
 
 /*

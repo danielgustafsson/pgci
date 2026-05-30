@@ -49,6 +49,7 @@ typedef struct BufferUsage BufferUsage;
 typedef struct ExecRowMark ExecRowMark;
 typedef struct ExprState ExprState;
 typedef struct ExprContext ExprContext;
+typedef struct ExprEvalStep ExprEvalStep;
 typedef struct HTAB HTAB;
 typedef struct Instrumentation Instrumentation;
 typedef struct pairingheap pairingheap;
@@ -118,11 +119,6 @@ typedef struct ExprState
 	TupleTableSlot *resultslot;
 
 	/*
-	 * Instructions to compute expression's return value.
-	 */
-	struct ExprEvalStep *steps;
-
-	/*
 	 * Function that actually evaluates the expression.  This can be set to
 	 * different values depending on the complexity of the expression.
 	 */
@@ -134,31 +130,15 @@ typedef struct ExprState
 	/* private state for an evalfunc */
 	void	   *evalfunc_private;
 
-	/*
-	 * XXX: following fields only needed during "compilation" (ExecInitExpr);
-	 * could be thrown away afterwards.
-	 */
+	int			steps_final_len;	/* number of steps */
 
-	int			steps_len;		/* number of steps currently */
-	int			steps_alloc;	/* allocated length of steps array */
-
-#define FIELDNO_EXPRSTATE_PARENT 11
+#define FIELDNO_EXPRSTATE_PARENT 9
 	PlanState  *parent;			/* parent PlanState node, if any */
-	ParamListInfo ext_params;	/* for compiling PARAM_EXTERN nodes */
 
-	Datum	   *innermost_caseval;
-	bool	   *innermost_casenull;
+	/* Instructions for computing expression's return value */
+#define FIELDNO_EXPRSTATE_STEPS 10
+	ExprEvalStep *steps;
 
-	Datum	   *innermost_domainval;
-	bool	   *innermost_domainnull;
-
-	/*
-	 * For expression nodes that support soft errors. Should be set to NULL if
-	 * the caller wants errors to be thrown. Callers that do not want errors
-	 * thrown should set it to a valid ErrorSaveContext before calling
-	 * ExecInitExprRec().
-	 */
-	ErrorSaveContext *escontext;
 } ExprState;
 
 

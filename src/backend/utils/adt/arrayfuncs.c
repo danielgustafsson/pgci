@@ -3205,7 +3205,8 @@ array_set(ArrayType *array, int nSubscripts, int *indx,
 Datum
 array_map(Datum arrayd,
 		  ExprState *exprstate, ExprContext *econtext,
-		  Oid retType, ArrayMapState *amstate)
+		  Oid retType, ArrayMapState *amstate,
+		  Datum *transform_source, bool *transform_source_isnull)
 {
 	AnyArrayType *v = DatumGetAnyArrayP(arrayd);
 	ArrayType  *result;
@@ -3229,8 +3230,6 @@ array_map(Datum arrayd,
 	array_iter	iter;
 	ArrayMetaState *inp_extra;
 	ArrayMetaState *ret_extra;
-	Datum	   *transform_source = exprstate->innermost_caseval;
-	bool	   *transform_source_isnull = exprstate->innermost_casenull;
 
 	inpType = AARR_ELEMTYPE(v);
 	ndim = AARR_NDIM(v);

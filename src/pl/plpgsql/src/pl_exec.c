@@ -395,7 +395,7 @@ static ParamExternData *plpgsql_param_fetch(ParamListInfo params,
 											int paramid, bool speculative,
 											ParamExternData *prm);
 static void plpgsql_param_compile(ParamListInfo params, Param *param,
-								  ExprState *state,
+								  ExprStateBuilder *esb,
 								  Datum *resv, bool *resnull);
 static void plpgsql_param_eval_var_check(ExprState *state, ExprEvalStep *op,
 										 ExprContext *econtext);
@@ -6524,7 +6524,7 @@ plpgsql_param_fetch(ParamListInfo params,
  */
 static void
 plpgsql_param_compile(ParamListInfo params, Param *param,
-					  ExprState *state,
+					  ExprStateBuilder *esb,
 					  Datum *resv, bool *resnull)
 {
 	PLpgSQL_execstate *estate;
@@ -6600,7 +6600,7 @@ plpgsql_param_compile(ParamListInfo params, Param *param,
 	scratch.d.cparam.paramarg2 = param;
 	scratch.d.cparam.paramid = param->paramid;
 	scratch.d.cparam.paramtype = param->paramtype;
-	ExprEvalPushStep(state, &scratch);
+	ExprEvalPushStep(esb, &scratch);
 }
 
 /*

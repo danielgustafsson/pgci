@@ -16,6 +16,7 @@
 
 /* to avoid including other headers */
 typedef struct ExprState ExprState;
+typedef struct ExprStateBuilder ExprStateBuilder;
 typedef struct Param Param;
 typedef struct ParseState ParseState;
 
@@ -101,7 +102,7 @@ typedef ParamExternData *(*ParamFetchHook) (ParamListInfo params,
 											ParamExternData *workspace);
 
 typedef void (*ParamCompileHook) (ParamListInfo params, Param *param,
-								  ExprState *state,
+								  ExprStateBuilder *esb,
 								  Datum *resv, bool *resnull);
 
 typedef void (*ParserSetupHook) (ParseState *pstate, void *arg);

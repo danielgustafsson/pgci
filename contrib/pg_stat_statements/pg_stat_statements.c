@@ -533,9 +533,9 @@ pgss_shmem_init(void *arg)
 	FILE	   *file = NULL;
 	FILE	   *qfile = NULL;
 	uint32		header;
-	int32		num;
-	int32		pgver;
-	int32		i;
+	int64		num;
+	uint32		pgver;
+	int64		i;
 	int			buffer_size;
 	char	   *buffer = NULL;
 
@@ -612,7 +612,7 @@ pgss_shmem_init(void *arg)
 
 	if (fread(&header, sizeof(uint32), 1, file) != 1 ||
 		fread(&pgver, sizeof(uint32), 1, file) != 1 ||
-		fread(&num, sizeof(int32), 1, file) != 1)
+		fread(&num, sizeof(int64), 1, file) != 1)
 		goto read_error;
 
 	if (header != PGSS_FILE_HEADER ||
@@ -737,7 +737,7 @@ pgss_shmem_shutdown(int code, Datum arg)
 	char	   *qbuffer = NULL;
 	Size		qbuffer_size = 0;
 	HASH_SEQ_STATUS hash_seq;
-	int32		num_entries;
+	int64		num_entries;
 	pgssEntry  *entry;
 
 	/* Don't try to dump during a crash. */
@@ -761,7 +761,7 @@ pgss_shmem_shutdown(int code, Datum arg)
 	if (fwrite(&PGSS_PG_MAJOR_VERSION, sizeof(uint32), 1, file) != 1)
 		goto error;
 	num_entries = hash_get_num_entries(pgss_hash);
-	if (fwrite(&num_entries, sizeof(int32), 1, file) != 1)
+	if (fwrite(&num_entries, sizeof(int64), 1, file) != 1)
 		goto error;
 
 	qbuffer = qtext_load_file(&qbuffer_size);

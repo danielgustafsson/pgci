@@ -70,7 +70,6 @@
 #include "storage/ipc.h"
 #include "storage/lmgr.h"
 #include "storage/proc.h"
-#include "storage/procarray.h"
 #include "storage/procsignal.h"
 #include "storage/subsystems.h"
 #include "utils/injection_point.h"

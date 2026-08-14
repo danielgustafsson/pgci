@@ -242,15 +242,26 @@ PostgreSQL documentation
    data directory must not be started or else data loss may occur.
   </para>
   <para>
-   When using a replication setup with tools which perform direct copies
-   of relation file blocks (for example <xref linkend="app-pgrewind"/>),
-   enabling or disabling checksums can lead to page corruptions in the
-   shape of incorrect checksums if the operation is not done consistently
-   across all nodes. When enabling or disabling checksums in a replication
-   setup, it is thus recommended to stop all the clusters before switching
-   them all consistently. Destroying all standbys, performing the operation
-   on the primary and finally recreating the standbys from scratch is also
-   safe.
+   Enabling or disabling checksums with
+   <application>pg_checksums</application> changes only the local data
+   directory.  In a replication setup the same change must be applied to
+   every node: stop all nodes, run
+   <application>pg_checksums</application> on each of them, and only then
+   restart them.  If the change is applied inconsistently, each node keeps
+   its own state, and a standby logs a warning when the state recorded in
+   the replayed WAL differs from its own.  The same warning can appear
+   transiently while a standby catches up over WAL written before a
+   consistent change; it stops once a checkpoint record carrying the new
+   state has been replayed.  A standby whose data directory was never
+   checksummed must not have checksums enabled by catching up this way;
+   converge the cluster by running <application>pg_checksums</application>
+   on it while stopped, by enabling checksums online, or by recreating it
+   from a base backup.  An online enable only starts from a primary whose
+   checksums are off, so if they are already enabled there, disable them
+   online first.  Tools that copy relation file blocks directly between
+   nodes, such as <xref linkend="app-pgrewind"/>, likewise require both
+   nodes to be in the same data checksum state; running them across an
+   inconsistent offline change can leave pages that fail verification.
   </para>
   <para>
    If <application>pg_checksums</application> is aborted or killed while

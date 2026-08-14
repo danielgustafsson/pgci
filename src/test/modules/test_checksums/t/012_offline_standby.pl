@@ -96,7 +96,12 @@ test_checksum_state($standby, 'off');
 
 # Converge the cluster: enable offline on the standby too.
 $standby->stop;
-$standby->checksum_enable_offline;
+command_checks_all(
+	[ 'pg_checksums', '--enable', '-D', $standby->data_dir ],
+	0,
+	[qr/appears to be a standby/],
+	[],
+	'standby-role notice on offline enable');
 $standby->start;
 test_checksum_state($standby, 'on');
 $primary->wait_for_catchup($standby);
@@ -163,6 +168,52 @@ unlike(
 	qr/does not match the state/,
 	'no spurious mismatch warning after crash-restart across an online transition'
 );
+
+# Scenario 4: a standby stopped while replaying an interrupted online
+# transition keeps the interrupted state in its own control file, and
+# pg_checksums must refuse to touch it.  The primary can never be
+# caught this way: its checksums launcher process resolves inprogress-on
+# back to off from its own exit cleanup whenever it exits, which happens
+# on any graceful stop.  A standby has no launcher; it only carries
+# forward whatever state the last replayed record left it in, and a
+# restartpoint persists that as-is when the standby itself is stopped.
+
+# Block an online enable on the primary at inprogress-on with a
+# blocking temp table, same trick as in 004_offline.pl.
+my $bsession = $primary->background_psql('postgres');
+$bsession->query_safe('CREATE TEMPORARY TABLE tt (a integer);');
+enable_data_checksums($primary, wait => 'inprogress-on');
+
+# The standby replays the XLOG2_CHECKSUMS record and picks up the
+# in-progress state itself.
+wait_for_checksum_state($standby, 'inprogress-on');
+
+# Stop the standby cleanly; its restartpoint persists inprogress-on to
+# its own control file, since nothing on a standby resolves it away.
+$standby->stop;
+
+command_fails_like(
+	[ 'pg_checksums', '--enable', '-D', $standby->data_dir ],
+	qr/online data checksum state transition was interrupted/,
+	'pg_checksums --enable refuses a standby stopped mid-transition');
+command_fails_like(
+	[ 'pg_checksums', '--check', '-D', $standby->data_dir ],
+	qr/online data checksum state transition was interrupted/,
+	'pg_checksums --check refuses a standby stopped mid-transition');
+command_fails_like(
+	[ 'pg_checksums', '--disable', '-D', $standby->data_dir ],
+	qr/online data checksum state transition was interrupted/,
+	'pg_checksums --disable refuses a standby stopped mid-transition');
+
+# Bring the standby back, then let the primary's transition complete.
+$standby->start;
+$bsession->quit;
+wait_for_checksum_state($primary, 'on');
+$primary->wait_for_catchup($standby);
+wait_for_checksum_state($standby, 'on');
+
+is( $standby->safe_psql('postgres', "SELECT count(*) FROM t;"),
+	'10001', 'standby readable once the transition completes');
 
 $standby->stop;
 $primary->stop;

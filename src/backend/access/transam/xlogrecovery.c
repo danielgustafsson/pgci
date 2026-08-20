@@ -3835,6 +3835,7 @@ WaitForWALToBecomeAvailable(XLogRecPtr RecPtr, bool randAccess,
 			case XLOG_FROM_STREAM:
 				{
 					bool		havedata;
+					XLogRecPtr	primaryWalEnd;
 
 					/*
 					 * We should be able to move to XLOG_FROM_STREAM only in
@@ -4031,13 +4032,10 @@ WaitForWALToBecomeAvailable(XLogRecPtr RecPtr, bool randAccess,
 					 * state is still pending the nodes have diverged, which
 					 * we must not allow.
 					 */
-					{
-						XLogRecPtr	primaryWalEnd = GetWalRcvLatestWalEnd();
-
-						if (XLogRecPtrIsValid(primaryWalEnd) &&
-							flushedUpto >= primaryWalEnd)
-							CheckDataChecksumConsistency();
-					}
+					primaryWalEnd = GetWalRcvLatestWalEnd();
+					if (XLogRecPtrIsValid(primaryWalEnd) &&
+						flushedUpto >= primaryWalEnd)
+						CheckDataChecksumConsistency();
 
 					/* Do any background tasks that might benefit us later. */
 					KnownAssignedTransactionIdsIdleMaintenance();

@@ -268,11 +268,11 @@ static const ChecksumBarrierCondition checksum_barriers[11] =
 	 */
 	{PG_DATA_CHECKSUM_INPROGRESS_ON, PG_DATA_CHECKSUM_INPROGRESS_OFF},
 
-
 	/*
-	 * When checksums are enabled offline the pg_checksums application will
-	 * set the state to 'inprogress-on-offline', and from there we can move
-	 * to checkssums 'on',
+	 * When checksums are enabled, or disabled, offline the pg_checksums
+	 * application sets the state to 'inprogress-on-offline', or
+	 * 'inprogress-off-offline', and from there the state can only move to
+	 * 'on', or 'off', respectively.
 	 */
 	{PG_DATA_CHECKSUM_INPROGRESS_ON_OFFLINE, PG_DATA_CHECKSUM_VERSION},
 	{PG_DATA_CHECKSUM_INPROGRESS_OFF_OFFLINE, PG_DATA_CHECKSUM_OFF},
@@ -552,6 +552,12 @@ AbsorbDataChecksumsBarrier(ProcSignalBarrierType barrier)
 	return true;
 }
 
+/*
+ * ValidateTransition
+ *		Returns whether a data checksum state transition is legal
+ *
+ * The legal transitions are the ones defined in the checksum_barriers struct.
+ */
 bool
 ValidateTransition(uint32 current, uint32 target_state)
 {

@@ -197,8 +197,8 @@ $node_primary->start;
 test_checksum_state($node_primary, 'on');
 my $a = $node_standby->start(fail_ok => 1);
 is ($a, 0, "Standby could not start");
+my $log = PostgreSQL::Test::Utils::slurp_file($node_standby->logfile, 0);
 $node_standby->clean_node;
-my $log = PostgreSQL::Test::Utils::slurp_file($node_primary->logfile, 0);
 unlike(
 	$log,
 	qr/page verification failed,.+\d$/m,

@@ -4858,8 +4858,9 @@ SetDataChecksumsOn(void)
 	SpinLockAcquire(&XLogCtl->info_lck);
 
 	/*
-	 * The only allowed state transition to "on" is from "inprogress" states
-	 * that state ensures that all pages will have data checksums written.
+	 * The only allowed state transitions to "on" are from the "inprogress"
+	 * states, as those states ensure that all pages will have data checksums
+	 * written.
 	 */
 	if (!ValidateTransition(XLogCtl->data_checksum_version, PG_DATA_CHECKSUM_VERSION))
 	{

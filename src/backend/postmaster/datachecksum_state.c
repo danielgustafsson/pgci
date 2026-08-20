@@ -235,7 +235,7 @@ typedef struct ChecksumBarrierCondition
 	int			to;
 } ChecksumBarrierCondition;
 
-static const ChecksumBarrierCondition checksum_barriers[9] =
+static const ChecksumBarrierCondition checksum_barriers[11] =
 {
 	/*
 	 * Disabling checksums: If checksums are currently enabled, disabling must
@@ -267,6 +267,15 @@ static const ChecksumBarrierCondition checksum_barriers[9] =
 	 * set to off since we cannot reach on at that point.
 	 */
 	{PG_DATA_CHECKSUM_INPROGRESS_ON, PG_DATA_CHECKSUM_INPROGRESS_OFF},
+
+
+	/*
+	 * When checksums are enabled offline the pg_checksums application will
+	 * set the state to 'inprogress-on-offline', and from there we can move
+	 * to checkssums 'on',
+	 */
+	{PG_DATA_CHECKSUM_INPROGRESS_ON_OFFLINE, PG_DATA_CHECKSUM_VERSION},
+	{PG_DATA_CHECKSUM_INPROGRESS_OFF_OFFLINE, PG_DATA_CHECKSUM_OFF},
 
 	/*
 	 * Transitions that can happen when a new request is made while another is
@@ -543,6 +552,17 @@ AbsorbDataChecksumsBarrier(ProcSignalBarrierType barrier)
 	return true;
 }
 
+bool
+ValidateTransition(uint32 current, uint32 target_state)
+{
+	for (size_t i = 0; i < lengthof(checksum_barriers); i++)
+	{
+		if (checksum_barriers[i].from == current && checksum_barriers[i].to == target_state)
+			return true;
+	}
+
+	return false;
+}
 
 /*
  * Disables data checksums for the cluster, if applicable. Starts a background

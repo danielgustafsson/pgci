@@ -52,6 +52,7 @@
 #include "replication/slot.h"
 #include "replication/slotsync.h"
 #include "replication/walreceiver.h"
+#include "storage/checksum.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/latch.h"

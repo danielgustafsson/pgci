@@ -4669,9 +4669,8 @@ GetMockAuthenticationNonce(void)
  *		Returns whether data checksums must be written or not
  *
  * Returns true if data checksums are enabled, or are in the process of being
- * enabled. During "inprogress-on" and "inprogress-off" states checksums must
- * be written even though they are not verified (see datachecksum_state.c for
- * a longer discussion).
+ * enabled. During "inprogress" states data checksums must be written even
+ * though they are not verified (see datachecksum_state.c for details).
  *
  * This function is intended for callsites which are about to write a data page
  * to storage, and need to know whether to re-calculate the checksum for the
@@ -4683,7 +4682,9 @@ DataChecksumsNeedWrite(void)
 {
 	return (LocalDataChecksumState == PG_DATA_CHECKSUM_VERSION ||
 			LocalDataChecksumState == PG_DATA_CHECKSUM_INPROGRESS_ON ||
-			LocalDataChecksumState == PG_DATA_CHECKSUM_INPROGRESS_OFF);
+			LocalDataChecksumState == PG_DATA_CHECKSUM_INPROGRESS_OFF ||
+			LocalDataChecksumState == PG_DATA_CHECKSUM_INPROGRESS_ON_OFFLINE ||
+			LocalDataChecksumState == PG_DATA_CHECKSUM_INPROGRESS_OFF_OFFLINE);
 }
 
 
@@ -4831,15 +4832,14 @@ SetDataChecksumsOn(void)
 	SpinLockAcquire(&XLogCtl->info_lck);
 
 	/*
-	 * The only allowed state transition to "on" is from "inprogress-on" since
-	 * that state ensures that all pages will have data checksums written. Any
-	 * other attempted state transition is likely due to a programmer error.
+	 * The only allowed state transition to "on" is from "inprogress" states
+	 * that state ensures that all pages will have data checksums written.
 	 */
-	if (XLogCtl->data_checksum_version != PG_DATA_CHECKSUM_INPROGRESS_ON)
+	if (!ValidateTransition(XLogCtl->data_checksum_version, PG_DATA_CHECKSUM_VERSION))
 	{
 		SpinLockRelease(&XLogCtl->info_lck);
 		elog(WARNING,
-			 "cannot set data checksums to \"on\", current state is not \"inprogress-on\", disabling");
+			 "cannot set data checksums to \"on\", incorrect current state");
 		SetDataChecksumsOff();
 		return;
 	}
@@ -6649,9 +6649,11 @@ StartupXLOG(void)
 	 * If data checksums were being disabled when the cluster was shut down,
 	 * we know that we have a state where all backends have stopped validating
 	 * checksums and we can move to off instead of prompting the user to
-	 * perform any action.
+	 * perform any action. If checksums were disabled as an offline operation
+	 * while the cluster was stopped, we also transition the state of off.
 	 */
-	else if (XLogCtl->data_checksum_version == PG_DATA_CHECKSUM_INPROGRESS_OFF)
+	else if (XLogCtl->data_checksum_version == PG_DATA_CHECKSUM_INPROGRESS_OFF ||
+			 XLogCtl->data_checksum_version == PG_DATA_CHECKSUM_INPROGRESS_OFF_OFFLINE)
 	{
 		XLogChecksums(PG_DATA_CHECKSUM_OFF);
 
@@ -6662,6 +6664,12 @@ StartupXLOG(void)
 
 		EmitAndWaitDataChecksumsBarrier(PG_DATA_CHECKSUM_OFF);
 	}
+	/*
+	 * If data checksums were enabled as an offline operation while the cluster
+	 * was stopped, transition the state of on.
+	 */
+	else if (XLogCtl->data_checksum_version == PG_DATA_CHECKSUM_INPROGRESS_ON_OFFLINE)
+		SetDataChecksumsOn();
 
 	/*
 	 * All done with end-of-recovery actions.
@@ -9210,15 +9218,27 @@ xlog_redo(XLogReaderState *record)
 
 		memcpy(&redo_rec, XLogRecGetData(record), sizeof(xl_checkpoint_redo));
 
-		SpinLockAcquire(&XLogCtl->info_lck);
-		XLogCtl->data_checksum_version = redo_rec.data_checksum_version;
-		SetLocalDataChecksumState(redo_rec.data_checksum_version);
-		if (redo_rec.data_checksum_version != ControlFile->data_checksum_version)
-			new_state = true;
-		SpinLockRelease(&XLogCtl->info_lck);
+		/*
+		 * If checksums were enabled, or disabled, using an offline operation
+		 * it is expected to see a REDO record from the offline operation in
+		 * the replay stream. Skip this state transition and instead and await
+		 * the XLOG_CHECKSUM WAL record which has the correct transition. If
+		 * this isn't seen when consistency is reached the cluster will exit
+		 * due to being inconsistent.
+		 */
+		if ((ControlFile->data_checksum_version != PG_DATA_CHECKSUM_INPROGRESS_ON_OFFLINE) &&
+			(ControlFile->data_checksum_version != PG_DATA_CHECKSUM_INPROGRESS_OFF_OFFLINE))
+		{
+			SpinLockAcquire(&XLogCtl->info_lck);
+			XLogCtl->data_checksum_version = redo_rec.data_checksum_version;
+			SetLocalDataChecksumState(redo_rec.data_checksum_version);
+			if (redo_rec.data_checksum_version != ControlFile->data_checksum_version)
+				new_state = true;
+			SpinLockRelease(&XLogCtl->info_lck);
 
-		if (new_state)
-			EmitAndWaitDataChecksumsBarrier(redo_rec.data_checksum_version);
+			if (new_state)
+				EmitAndWaitDataChecksumsBarrier(redo_rec.data_checksum_version);
+		}
 	}
 	else if (info == XLOG_LOGICAL_DECODING_STATUS_CHANGE)
 	{
@@ -9272,6 +9292,17 @@ xlog_redo(XLogReaderState *record)
 }
 
 void
+CheckDataChecksumConsistency(void)
+{
+	SpinLockAcquire(&XLogCtl->info_lck);
+	if (XLogCtl->data_checksum_version == PG_DATA_CHECKSUM_INPROGRESS_OFF_OFFLINE ||
+		XLogCtl->data_checksum_version == PG_DATA_CHECKSUM_INPROGRESS_ON_OFFLINE)
+		ereport(FATAL,
+				errmsg("data checksums state is inconsistent after replay"));
+	SpinLockRelease(&XLogCtl->info_lck);
+}
+
+void
 xlog2_redo(XLogReaderState *record)
 {
 	uint8		info = XLogRecGetInfo(record) & ~XLR_INFO_MASK;
@@ -9280,6 +9311,7 @@ xlog2_redo(XLogReaderState *record)
 	{
 		xl_checksum_state state;
 		XLogRecPtr	lsn = record->EndRecPtr;
+		uint32 old;
 
 		memcpy(&state, XLogRecGetData(record), sizeof(xl_checksum_state));
 
@@ -9287,8 +9319,12 @@ xlog2_redo(XLogReaderState *record)
 		pg_atomic_write_u64(&XLogCtl->lastChecksumChangeRecPtr, lsn);
 
 		SpinLockAcquire(&XLogCtl->info_lck);
+		old = XLogCtl->data_checksum_version;
 		XLogCtl->data_checksum_version = state.new_checksum_state;
 		SpinLockRelease(&XLogCtl->info_lck);
+
+		if (!ValidateTransition(old, state.new_checksum_state))
+			ereport(FATAL, errmsg("XXX: incorrect data checksum state transition"));
 
 		LWLockAcquire(ControlFileLock, LW_EXCLUSIVE);
 		ControlFile->data_checksum_version = state.new_checksum_state;
@@ -9315,6 +9351,13 @@ xlog2_redo(XLogReaderState *record)
 			(void) GetCurrentReplayRecPtr(&replayTLI);
 			ControlFile->minRecoveryPoint = lsn;
 			ControlFile->minRecoveryPointTLI = replayTLI;
+		}
+
+		if (old == PG_DATA_CHECKSUM_INPROGRESS_ON_OFFLINE || old == PG_DATA_CHECKSUM_INPROGRESS_OFF_OFFLINE)
+		{
+			SpinLockAcquire(&XLogCtl->info_lck);
+			ControlFile->data_checksum_version = XLogCtl->data_checksum_version;
+			SpinLockRelease(&XLogCtl->info_lck);
 		}
 
 		UpdateControlFile();

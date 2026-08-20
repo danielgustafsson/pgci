@@ -4725,6 +4725,32 @@ DataChecksumsInProgressOn(void)
 }
 
 /*
+ * DataChecksumsPendingOffline
+ *		Returns whether an offline data checksum change is pending
+ *
+ * The "inprogress-on-offline" and "inprogress-off-offline" states are set by
+ * pg_checksums when data checksums are enabled, or disabled, in a cluster
+ * which is shut down.  The states are resolved when the cluster is started
+ * again, either directly in StartupXLOG() for a cluster which is not in
+ * recovery, or by replaying the XLOG_CHECKSUMS record which the primary
+ * emitted when it resolved the very same state.  Until then the state is
+ * pending, and it must not be overwritten by the data checksum state recorded
+ * in checkpoints which predate the offline operation.
+ */
+bool
+DataChecksumsPendingOffline(void)
+{
+	bool		ret;
+
+	SpinLockAcquire(&XLogCtl->info_lck);
+	ret = (XLogCtl->data_checksum_version == PG_DATA_CHECKSUM_INPROGRESS_ON_OFFLINE ||
+		   XLogCtl->data_checksum_version == PG_DATA_CHECKSUM_INPROGRESS_OFF_OFFLINE);
+	SpinLockRelease(&XLogCtl->info_lck);
+
+	return ret;
+}
+
+/*
  * DataChecksumsNeedVerify
  *		Returns whether data checksums must be verified or not
  *
@@ -8329,8 +8355,16 @@ CreateRestartPoint(int flags)
 				ControlFile->state = DB_SHUTDOWNED_IN_RECOVERY;
 		}
 
-		/* we shall start with the latest checksum version */
-		ControlFile->data_checksum_version = lastCheckPoint.dataChecksumState;
+		/*
+		 * The data checksum state must be taken from the state which replay
+		 * has reached, and not from the checkpoint the restartpoint is based
+		 * on.  The checkpoint can predate the most recently replayed data
+		 * checksum state change, in which case its state is stale, and it
+		 * always predates a state change performed offline on this node.
+		 */
+		SpinLockAcquire(&XLogCtl->info_lck);
+		ControlFile->data_checksum_version = XLogCtl->data_checksum_version;
+		SpinLockRelease(&XLogCtl->info_lck);
 
 		UpdateControlFile();
 	}
@@ -8974,7 +9008,15 @@ xlog_redo(XLogReaderState *record)
 		/* ControlFile->checkPointCopy always tracks the latest ckpt XID */
 		LWLockAcquire(ControlFileLock, LW_EXCLUSIVE);
 		ControlFile->checkPointCopy.nextXid = checkPoint.nextXid;
-		ControlFile->data_checksum_version = checkPoint.dataChecksumState;
+
+		/*
+		 * A checksum state change performed offline on this node predates the
+		 * checkpoint, so the state in the checkpoint must not overwrite the
+		 * pending state.  It is resolved by replaying the XLOG_CHECKSUMS
+		 * record which the primary emitted for the same offline operation.
+		 */
+		if (!DataChecksumsPendingOffline())
+			ControlFile->data_checksum_version = checkPoint.dataChecksumState;
 
 		UpdateControlFile();
 		LWLockRelease(ControlFileLock);
@@ -9220,14 +9262,13 @@ xlog_redo(XLogReaderState *record)
 
 		/*
 		 * If checksums were enabled, or disabled, using an offline operation
-		 * it is expected to see a REDO record from the offline operation in
-		 * the replay stream. Skip this state transition and instead and await
-		 * the XLOG_CHECKSUM WAL record which has the correct transition. If
-		 * this isn't seen when consistency is reached the cluster will exit
-		 * due to being inconsistent.
+		 * it is expected to see a REDO record from before the offline
+		 * operation in the replay stream. Skip this state transition and
+		 * instead await the XLOG_CHECKSUMS WAL record which has the correct
+		 * transition. If this isn't seen by the time replay has caught up
+		 * with the primary the cluster will exit due to being inconsistent.
 		 */
-		if ((ControlFile->data_checksum_version != PG_DATA_CHECKSUM_INPROGRESS_ON_OFFLINE) &&
-			(ControlFile->data_checksum_version != PG_DATA_CHECKSUM_INPROGRESS_OFF_OFFLINE))
+		if (!DataChecksumsPendingOffline())
 		{
 			SpinLockAcquire(&XLogCtl->info_lck);
 			XLogCtl->data_checksum_version = redo_rec.data_checksum_version;
@@ -9291,15 +9332,42 @@ xlog_redo(XLogReaderState *record)
 	}
 }
 
+/*
+ * CheckDataChecksumConsistency
+ *		Verify that a pending offline data checksum change has been resolved
+ *
+ * When data checksums are enabled, or disabled, in a cluster which is shut
+ * down, pg_checksums records an "inprogress-*-offline" state in the control
+ * file.  A node which is started in recovery with such a state must replay the
+ * XLOG_CHECKSUMS record which the primary emitted when it resolved the very
+ * same state.  If the state is still pending once replay has caught up with
+ * the primary, then the primary never performed the offline operation and the
+ * data checksum state of the nodes has diverged, which isn't allowed.  There
+ * is no way to recover from this during replay, so the node is shut down and
+ * the user is instructed how to resolve the situation.
+ *
+ * This is intended to be called from the startup process when replay has
+ * caught up with the primary.
+ */
 void
 CheckDataChecksumConsistency(void)
 {
+	uint32		state;
+
 	SpinLockAcquire(&XLogCtl->info_lck);
-	if (XLogCtl->data_checksum_version == PG_DATA_CHECKSUM_INPROGRESS_OFF_OFFLINE ||
-		XLogCtl->data_checksum_version == PG_DATA_CHECKSUM_INPROGRESS_ON_OFFLINE)
-		ereport(FATAL,
-				errmsg("data checksums state is inconsistent after replay"));
+	state = XLogCtl->data_checksum_version;
 	SpinLockRelease(&XLogCtl->info_lck);
+
+	if (state == PG_DATA_CHECKSUM_INPROGRESS_ON_OFFLINE)
+		ereport(FATAL,
+				errmsg("data checksum state mismatch between primary and standby"),
+				errdetail("Data checksums were enabled offline on this node, but not on the primary."),
+				errhint("Enable data checksums on the primary, or disable them on this node with pg_checksums."));
+	else if (state == PG_DATA_CHECKSUM_INPROGRESS_OFF_OFFLINE)
+		ereport(FATAL,
+				errmsg("data checksum state mismatch between primary and standby"),
+				errdetail("Data checksums were disabled offline on this node, but not on the primary."),
+				errhint("Disable data checksums on the primary, or enable them on this node with pg_checksums."));
 }
 
 void
@@ -9324,7 +9392,11 @@ xlog2_redo(XLogReaderState *record)
 		SpinLockRelease(&XLogCtl->info_lck);
 
 		if (!ValidateTransition(old, state.new_checksum_state))
-			ereport(FATAL, errmsg("XXX: incorrect data checksum state transition"));
+			ereport(FATAL,
+					errmsg("invalid data checksum state transition during replay"),
+					errdetail("The state cannot be changed from \"%s\" to \"%s\".",
+							  get_checksum_state_string(old),
+							  get_checksum_state_string(state.new_checksum_state)));
 
 		LWLockAcquire(ControlFileLock, LW_EXCLUSIVE);
 		ControlFile->data_checksum_version = state.new_checksum_state;
@@ -9351,13 +9423,6 @@ xlog2_redo(XLogReaderState *record)
 			(void) GetCurrentReplayRecPtr(&replayTLI);
 			ControlFile->minRecoveryPoint = lsn;
 			ControlFile->minRecoveryPointTLI = replayTLI;
-		}
-
-		if (old == PG_DATA_CHECKSUM_INPROGRESS_ON_OFFLINE || old == PG_DATA_CHECKSUM_INPROGRESS_OFF_OFFLINE)
-		{
-			SpinLockAcquire(&XLogCtl->info_lck);
-			ControlFile->data_checksum_version = XLogCtl->data_checksum_version;
-			SpinLockRelease(&XLogCtl->info_lck);
 		}
 
 		UpdateControlFile();

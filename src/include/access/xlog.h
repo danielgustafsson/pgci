@@ -296,6 +296,7 @@ extern TimeLineID GetWALInsertionTimeLine(void);
 extern TimeLineID GetWALInsertionTimeLineIfSet(void);
 extern XLogRecPtr GetLastImportantRecPtr(void);
 
+extern bool DataChecksumsPendingOffline(void);
 extern void CheckDataChecksumConsistency(void);
 extern void SetWalWriterSleeping(bool sleeping);
 

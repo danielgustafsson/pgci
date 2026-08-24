@@ -40,15 +40,15 @@ use DataChecksums::Utils;
 # shared_buffers setting and use custom timeouts.  It requires the
 # "checksum_extended" PG_TEST_EXTRA setting to not cause false positives on
 # slow or constrained systems.
-if ($ENV{PG_TEST_EXTRA})
-{
-	plan skip_all => 'Expensive data checksums test disabled'
-	  unless ($ENV{PG_TEST_EXTRA} =~ /\bchecksum_extended\b/);
-}
-else
-{
-	plan skip_all => 'Expensive data checksums test disabled';
-}
+#if ($ENV{PG_TEST_EXTRA})
+#{
+#	plan skip_all => 'Expensive data checksums test disabled'
+#	  unless ($ENV{PG_TEST_EXTRA} =~ /\bchecksum_extended\b/);
+#}
+#else
+#{
+#	plan skip_all => 'Expensive data checksums test disabled';
+#}
 
 if ($ENV{enable_injection_points} ne 'yes')
 {

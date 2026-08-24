@@ -21,17 +21,17 @@ use DataChecksums::Utils;
 # PG_TEST_EXTRA options for running it, "checksum" for a pared-down test suite
 # an "checksum_extended" for the full suite.  The full suite can run for hours
 # on slow or constrained systems.
-my $extended = undef;
-if ($ENV{PG_TEST_EXTRA})
-{
-	$extended = 1 if ($ENV{PG_TEST_EXTRA} =~ /\bchecksum_extended\b/);
-	plan skip_all => 'Expensive data checksums test disabled'
-	  unless ($ENV{PG_TEST_EXTRA} =~ /\bchecksum(_extended)?\b/);
-}
-else
-{
-	plan skip_all => 'Expensive data checksums test disabled';
-}
+my $extended = 1;
+#if ($ENV{PG_TEST_EXTRA})
+#{
+#	$extended = 1 if ($ENV{PG_TEST_EXTRA} =~ /\bchecksum_extended\b/);
+#	plan skip_all => 'Expensive data checksums test disabled'
+#	  unless ($ENV{PG_TEST_EXTRA} =~ /\bchecksum(_extended)?\b/);
+#}
+#else
+#{
+#	plan skip_all => 'Expensive data checksums test disabled';
+#}
 
 if ($ENV{enable_injection_points} ne 'yes')
 {

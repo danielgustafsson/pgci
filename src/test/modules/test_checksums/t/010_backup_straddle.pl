@@ -34,15 +34,15 @@ use DataChecksums::Utils;
 # This test suite is potentially expensive due to it requiring an increased
 # shared_buffers setting.  It requires the "checksum" PG_TEST_EXTRA setting to
 # not cause false positives on slow or constrained systems.
-if ($ENV{PG_TEST_EXTRA})
-{
-	plan skip_all => 'Expensive data checksums test disabled'
-	  unless ($ENV{PG_TEST_EXTRA} =~ /\bchecksum(_extended)?\b/);
-}
-else
-{
-	plan skip_all => 'Expensive data checksums test disabled';
-}
+#if ($ENV{PG_TEST_EXTRA})
+#{
+#	plan skip_all => 'Expensive data checksums test disabled'
+#	  unless ($ENV{PG_TEST_EXTRA} =~ /\bchecksum(_extended)?\b/);
+#}
+#else
+#{
+#	plan skip_all => 'Expensive data checksums test disabled';
+#}
 
 if ($ENV{enable_injection_points} ne 'yes')
 {

@@ -16,17 +16,17 @@ use DataChecksums::Utils;
 # This test suite is expensive, or very expensive, to execute.  There are two
 # PG_TEST_EXTRA options for running it, "checksum" for a pared-down test suite
 # an "checksum_extended" for the full suite.
-my $extended = undef;
-if ($ENV{PG_TEST_EXTRA})
-{
-	$extended = 1 if ($ENV{PG_TEST_EXTRA} =~ /\bchecksum_extended\b/);
-	plan skip_all => 'Expensive data checksums test disabled'
-	  unless ($ENV{PG_TEST_EXTRA} =~ /\bchecksum(_extended)?\b/);
-}
-else
-{
-	plan skip_all => 'Expensive data checksums test disabled';
-}
+my $extended = 1;
+#if ($ENV{PG_TEST_EXTRA})
+#{
+#	$extended = 1 if ($ENV{PG_TEST_EXTRA} =~ /\bchecksum_extended\b/);
+#	plan skip_all => 'Expensive data checksums test disabled'
+#	  unless ($ENV{PG_TEST_EXTRA} =~ /\bchecksum(_extended)?\b/);
+#}
+#else
+#{
+#	plan skip_all => 'Expensive data checksums test disabled';
+#}
 
 
 my $pgbench = undef;

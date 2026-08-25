@@ -48,6 +48,7 @@ tests += {
       't/022_resident_enable_crash.pl',
       't/023_rewind_state.pl',
       't/024_rewind_standby_target.pl',
+      't/025_combinebackup_mixed.pl',
     ],
   },
 }

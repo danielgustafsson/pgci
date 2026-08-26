@@ -646,7 +646,7 @@ main(int argc, char *argv[])
 	if (mode == PG_MODE_ENABLE || mode == PG_MODE_DISABLE)
 	{
 		ControlFile->data_checksum_version =
-			(mode == PG_MODE_ENABLE) ? PG_DATA_CHECKSUM_VERSION : PG_DATA_CHECKSUM_OFF;
+			(mode == PG_MODE_ENABLE) ? PG_DATA_CHECKSUM_INPROGRESS_ON_OFFLINE : PG_DATA_CHECKSUM_INPROGRESS_OFF_OFFLINE;
 
 		if (do_sync)
 		{

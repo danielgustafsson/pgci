@@ -95,7 +95,7 @@ walsummarizer|wal|init
 walsummarizer|wal|normal
 walwriter|wal|init
 walwriter|wal|normal
-(88 rows)
+(79 rows)
 \a
 -- ensure that both seqscan and indexscan plans are allowed
 SET enable_seqscan TO on;

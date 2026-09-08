@@ -1253,10 +1253,10 @@ DataChecksumsWorkerLauncherMain(Datum arg)
 		return;
 	}
 
+	on_shmem_exit(launcher_exit, 0);
+
 	/* Initialize a connection to shared catalogs only */
 	BackgroundWorkerInitializeConnectionByOid(InvalidOid, InvalidOid, 0);
-
-	before_shmem_exit(launcher_exit, 0);
 
 	operation = DataChecksumState->launch_operation;
 	DataChecksumState->launcher_running = true;
@@ -1366,33 +1366,6 @@ done:
 	/* Shut down progress reporting as we are done */
 	pgstat_progress_end_command();
 
-	/*
-	 * If processing was canceled, restore the disabled state before releasing
-	 * ownership of the launcher role.
-	 */
-	if (DataChecksumsInProgressOn())
-	{
-		LWLockRelease(DataChecksumsWorkerLock);
-		SetDataChecksumsOff();
-		LWLockAcquire(DataChecksumsWorkerLock, LW_EXCLUSIVE);
-
-		/*
-		 * A new request could have arrived while the lock was released.  Let
-		 * this launcher process it rather than clearing launcher_running and
-		 * losing the request.
-		 */
-		if (DataChecksumState->launch_operation != operation)
-		{
-			DataChecksumState->operation = DataChecksumState->launch_operation;
-			operation = DataChecksumState->launch_operation;
-			DataChecksumState->cost_delay = DataChecksumState->launch_cost_delay;
-			DataChecksumState->cost_limit = DataChecksumState->launch_cost_limit;
-			LWLockRelease(DataChecksumsWorkerLock);
-			goto again;
-		}
-	}
-
-	cancel_before_shmem_exit(launcher_exit, 0);
 	DataChecksumState->launcher_running = false;
 	LWLockRelease(DataChecksumsWorkerLock);
 }

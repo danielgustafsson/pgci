@@ -370,12 +370,6 @@ static volatile sig_atomic_t abort_requested = false;
 
 static uint64 worker_invocation;
 
-/*
- * Have we set the DataChecksumsStateStruct->launcher_running flag?
- * If we have, we need to clear it before exiting!
- */
-static volatile sig_atomic_t launcher_running = false;
-
 /* Are we enabling data checksums, or disabling them? */
 static DataChecksumsWorkerOperation operation;
 
@@ -1117,18 +1111,15 @@ launcher_exit(int code, Datum arg)
 {
 	abort_requested = false;
 
-	if (launcher_running)
+	LWLockAcquire(DataChecksumsWorkerLock, LW_EXCLUSIVE);
+	if (DataChecksumState->worker_pid != InvalidPid)
 	{
-		LWLockAcquire(DataChecksumsWorkerLock, LW_EXCLUSIVE);
-		if (DataChecksumState->worker_pid != InvalidPid)
-		{
-			ereport(LOG,
-					errmsg("data checksums launcher exiting while worker is still running, signalling worker"));
-			kill(DataChecksumState->worker_pid, SIGTERM);
-			DataChecksumState->worker_pid = InvalidPid;
-		}
-		LWLockRelease(DataChecksumsWorkerLock);
+		ereport(LOG,
+				errmsg("data checksums launcher exiting while worker is still running, signalling worker"));
+		kill(DataChecksumState->worker_pid, SIGTERM);
+		DataChecksumState->worker_pid = InvalidPid;
 	}
+	LWLockRelease(DataChecksumsWorkerLock);
 
 	/*
 	 * If the launcher is exiting before data checksums are enabled then set
@@ -1138,7 +1129,6 @@ launcher_exit(int code, Datum arg)
 		SetDataChecksumsOff();
 
 	LWLockAcquire(DataChecksumsWorkerLock, LW_EXCLUSIVE);
-	launcher_running = false;
 	DataChecksumState->launcher_running = false;
 	LWLockRelease(DataChecksumsWorkerLock);
 }
@@ -1264,7 +1254,6 @@ DataChecksumsWorkerLauncherMain(Datum arg)
 	}
 
 	on_shmem_exit(launcher_exit, 0);
-	launcher_running = true;
 
 	/* Initialize a connection to shared catalogs only */
 	BackgroundWorkerInitializeConnectionByOid(InvalidOid, InvalidOid, 0);
@@ -1377,7 +1366,6 @@ done:
 	/* Shut down progress reporting as we are done */
 	pgstat_progress_end_command();
 
-	launcher_running = false;
 	DataChecksumState->launcher_running = false;
 	LWLockRelease(DataChecksumsWorkerLock);
 }

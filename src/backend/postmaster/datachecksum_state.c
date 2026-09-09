@@ -873,7 +873,8 @@ ProcessSingleRelationByOid(Oid relationId, BufferAccessStrategy strategy)
  *
  * This is like WaitForBackgroundWorkerStartup() and
  * WaitForBackgroundWorkerShutdown(), except that it also reacts to SIGINT
- * received by the launcher.  The launcher owns the overall checksum
+ * received by the launcher and changes to the requested operation.  The
+ * launcher owns the overall checksum
  * operation, so canceling it should stop the worker it has registered or is
  * currently running.
  *
@@ -898,7 +899,9 @@ WaitForDataChecksumsWorkerState(BackgroundWorkerHandle *handle,
 		int			rc;
 		pid_t		pid;
 
+		ResetLatch(MyLatch);
 		CHECK_FOR_INTERRUPTS();
+		CHECK_FOR_LAUNCHER_ABORT_REQUEST();
 
 		status = GetBackgroundWorkerPid(handle, &pid);
 		if (status == BGWH_STARTED && pidp)
@@ -918,8 +921,12 @@ WaitForDataChecksumsWorkerState(BackgroundWorkerHandle *handle,
 			(wait_for_startup && status == BGWH_STARTED))
 			break;
 
+		/*
+		 * New requests update shared memory without signaling the launcher.
+		 * Poll even if the worker is blocked and cannot notice the request.
+		 */
 		rc = WaitLatch(MyLatch,
-					   WL_LATCH_SET | WL_POSTMASTER_DEATH, 0,
+					   WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH, 1000,
 					   wait_event);
 
 		if (rc & WL_POSTMASTER_DEATH)
@@ -927,8 +934,6 @@ WaitForDataChecksumsWorkerState(BackgroundWorkerHandle *handle,
 			status = BGWH_POSTMASTER_DIED;
 			break;
 		}
-
-		ResetLatch(MyLatch);
 	}
 
 	return status;
@@ -1115,20 +1120,21 @@ done:
 static void
 launcher_exit(int code, Datum arg)
 {
+	/* A normal exit has already released ownership to the next launcher. */
+	if (!launcher_running)
+		return;
+
 	abort_requested = false;
 
-	if (launcher_running)
+	LWLockAcquire(DataChecksumsWorkerLock, LW_EXCLUSIVE);
+	if (DataChecksumState->worker_pid != InvalidPid)
 	{
-		LWLockAcquire(DataChecksumsWorkerLock, LW_EXCLUSIVE);
-		if (DataChecksumState->worker_pid != InvalidPid)
-		{
-			ereport(LOG,
-					errmsg("data checksums launcher exiting while worker is still running, signalling worker"));
-			kill(DataChecksumState->worker_pid, SIGTERM);
-			DataChecksumState->worker_pid = InvalidPid;
-		}
-		LWLockRelease(DataChecksumsWorkerLock);
+		ereport(LOG,
+				errmsg("data checksums launcher exiting while worker is still running, signalling worker"));
+		kill(DataChecksumState->worker_pid, SIGTERM);
+		DataChecksumState->worker_pid = InvalidPid;
 	}
+	LWLockRelease(DataChecksumsWorkerLock);
 
 	/*
 	 * If the launcher is exiting before data checksums are enabled then set
@@ -1360,6 +1366,13 @@ done:
 								 PROGRESS_DATACHECKSUMS_PHASE_DONE);
 
 	/*
+	 * Roll back an unfinished enable while we still own the launcher state.
+	 * The exit callback must not do this after a replacement can take over.
+	 */
+	if (abort_requested && DataChecksumsInProgressOn())
+		SetDataChecksumsOff();
+
+	/*
 	 * All done. But before we exit, check if the target state was changed
 	 * while we were running. In that case we will have to start all over
 	 * again.
@@ -1371,6 +1384,7 @@ done:
 		operation = DataChecksumState->launch_operation;
 		DataChecksumState->cost_delay = DataChecksumState->launch_cost_delay;
 		DataChecksumState->cost_limit = DataChecksumState->launch_cost_limit;
+		abort_requested = false;
 		LWLockRelease(DataChecksumsWorkerLock);
 		goto again;
 	}

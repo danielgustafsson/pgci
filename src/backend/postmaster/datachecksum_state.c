@@ -1345,6 +1345,7 @@ again:
 		SetDataChecksumsOff();
 		ereport(LOG,
 				errmsg("data checksums are now disabled"));
+		INJECTION_POINT("datachecksumsworker-disable-complete", NULL);
 	}
 	else
 		Assert(false);
@@ -1380,6 +1381,8 @@ done:
 	launcher_running = false;
 	DataChecksumState->launcher_running = false;
 	LWLockRelease(DataChecksumsWorkerLock);
+
+	INJECTION_POINT("datachecksumsworker-launcher-before-exit", NULL);
 }
 
 /*

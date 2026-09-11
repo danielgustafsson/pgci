@@ -35,6 +35,10 @@
  * For each database, all relations which have storage are read and every data
  * page is marked dirty to force a write with the checksum. This will generate
  * a lot of WAL as the entire database is read and written.
+ * Physical relation files are then reconciled with the current relation
+ * mappings.  Nonempty files not accounted for by the catalog-based processing
+ * prevent enabling from completing; they must not be rewritten or removed
+ * merely because a catalog lookup cannot find them.
  *
  * If the processing is interrupted by a cluster crash or restart, it needs to
  * be restarted from the beginning again as state isn't persisted.
@@ -204,6 +208,8 @@
  */
 #include "postgres.h"
 
+#include <sys/stat.h>
+
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/htup_details.h"
@@ -213,6 +219,7 @@
 #include "catalog/indexing.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_database.h"
+#include "catalog/pg_tablespace_d.h"
 #include "commands/progress.h"
 #include "commands/vacuum.h"
 #include "common/relpath.h"
@@ -223,19 +230,23 @@
 #include "postmaster/datachecksum_state.h"
 #include "storage/bufmgr.h"
 #include "storage/checksum.h"
+#include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/latch.h"
 #include "storage/lmgr.h"
 #include "storage/lwlock.h"
 #include "storage/procarray.h"
+#include "storage/reinit.h"
 #include "storage/smgr.h"
 #include "storage/subsystems.h"
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/injection_point.h"
+#include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/ps_status.h"
+#include "utils/relfilenumbermap.h"
 #include "utils/syscache.h"
 #include "utils/wait_event.h"
 
@@ -419,6 +430,9 @@ static bool DatabaseExists(Oid dboid);
 static List *BuildDatabaseList(void);
 static void FreeDatabaseList(List *dblist);
 static List *BuildRelationList(bool temp_relations, bool include_shared);
+static void CheckRelationFiles(const char *path, Oid spcoid);
+static void CheckDatabaseFiles(bool include_shared);
+static void CheckUnaccountedDatabaseFiles(void);
 
 const ShmemCallbacks DataChecksumsShmemCallbacks = {
 	.request_fn = DataChecksumsShmemRequest,
@@ -1500,6 +1514,10 @@ ProcessAllDatabases(void)
 
 	FreeDatabaseList(DatabaseList);
 
+	CheckUnaccountedDatabaseFiles();
+	if (abort_requested)
+		return false;
+
 	pgstat_progress_update_param(PROGRESS_DATACHECKSUMS_PHASE,
 								 PROGRESS_DATACHECKSUMS_PHASE_WAITING_BARRIER);
 	return true;
@@ -1735,6 +1753,229 @@ BuildRelationList(bool temp_relations, bool include_shared)
 }
 
 /*
+ * Return the OID for a canonical numeric directory name, or InvalidOid for
+ * other entries (including "." and "..").
+ */
+static Oid
+ChecksumDirectoryOid(const char *name)
+{
+	unsigned long value;
+	char	   *end;
+
+	if (name[0] < '1' || name[0] > '9')
+		return InvalidOid;
+	errno = 0;
+	value = strtoul(name, &end, 10);
+	if (errno != 0 || *end != '\0' || value > PG_UINT32_MAX)
+		return InvalidOid;
+	return (Oid) value;
+}
+
+/*
+ * Reconcile physical files, without reading or changing their contents.
+ *
+ * A catalog scan alone misses orphan files, which base backup nevertheless
+ * reads and verifies.  Reject any nonempty relation file that cannot be
+ * attributed to a current relation and its accessible block range.  The latter
+ * check also catches segments beyond a gap in an otherwise catalogued fork.
+ * Mapped relations must be resolved through the relation mapper.
+ *
+ * This deliberately does not claim that catalog absence proves orphanhood:
+ * concurrent uncommitted CREATE or rewrite can also leave an unmatched file.
+ * Rejecting such a file is conservative; retrying after the DDL completes is
+ * safe.  Never rewrite or remove an unmatched file based on catalog absence.
+ *
+ * Called in a transaction.  InvalidOid means the directory has no database
+ * entry, so none of its nonempty relation files can be accounted for.
+ */
+static void
+CheckRelationFiles(const char *path, Oid spcoid)
+{
+	DIR		   *dir;
+	struct dirent *de;
+
+	dir = AllocateDir(path);
+	if (dir == NULL && errno == ENOENT)
+		return;
+
+	while ((de = ReadDir(dir, path)) != NULL)
+	{
+		RelFileNumber relnumber;
+		ForkNumber	forknum;
+		unsigned	segno;
+		char		filename[MAXPGPATH];
+		struct stat st;
+		Relation	rel = NULL;
+		bool		accounted = false;
+
+		CHECK_FOR_INTERRUPTS();
+		if (MyBackendType == B_DATACHECKSUMSWORKER_WORKER)
+			CHECK_FOR_WORKER_ABORT_REQUEST();
+		else
+			CHECK_FOR_LAUNCHER_ABORT_REQUEST();
+		if (abort_requested)
+			break;
+
+		if (!parse_filename_for_nontemp_relation(de->d_name, &relnumber,
+											   &forknum, &segno))
+			continue;
+		snprintf(filename, sizeof(filename), "%s/%s", path, de->d_name);
+
+		if (OidIsValid(spcoid))
+		{
+			Oid			relid;
+
+			AcceptInvalidationMessages();
+			relid = RelidByRelfilenumber(spcoid, relnumber);
+			if (OidIsValid(relid))
+				rel = try_relation_open(relid, AccessShareLock);
+		}
+
+		/*
+		 * Stat after acquiring the lock: DROP or TRUNCATE may have completed
+		 * while we waited.  Empty files, including pending unlinks, contain
+		 * no pages needing checksums.
+		 */
+		if (stat(filename, &st) != 0)
+		{
+			if (errno != ENOENT)
+				ereport(ERROR,
+						(errcode_for_file_access(),
+						 errmsg("could not stat file \"%s\": %m", filename)));
+			accounted = true;
+		}
+		else if (S_ISREG(st.st_mode) && st.st_size == 0)
+			accounted = true;
+		else if (S_ISREG(st.st_mode) && rel != NULL &&
+				 rel->rd_locator.spcOid == spcoid &&
+				 rel->rd_locator.relNumber == relnumber &&
+				 rel->rd_rel->relpersistence != RELPERSISTENCE_TEMP &&
+				 smgrexists(RelationGetSmgr(rel), forknum))
+		{
+			BlockNumber nblocks = RelationGetNumberOfBlocksInFork(rel, forknum);
+			uint64		firstblock = (uint64) segno * RELSEG_SIZE;
+
+			accounted = firstblock < nblocks &&
+				st.st_size <= (uint64) BLCKSZ *
+				Min((uint64) RELSEG_SIZE, nblocks - firstblock);
+		}
+
+		if (rel != NULL)
+			relation_close(rel, AccessShareLock);
+		if (!accounted)
+			ereport(ERROR,
+					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+					 errmsg("cannot enable data checksums with unaccounted relation file \"%s\"",
+							filename),
+					 errhint("Use pg_checksums --enable while the cluster is shut down to checksum all physical relation files.")));
+	}
+	FreeDir(dir);
+}
+
+/*
+ * Check this database in every physical tablespace, not just the tablespaces
+ * referenced by its catalogs.  Shared storage is checked by the first worker.
+ */
+static void
+CheckDatabaseFiles(bool include_shared)
+{
+	DIR		   *dir;
+	struct dirent *de;
+	char		path[MAXPGPATH];
+
+	StartTransactionCommand();
+	snprintf(path, sizeof(path), "base/%u", MyDatabaseId);
+	CheckRelationFiles(path, DEFAULTTABLESPACE_OID);
+	if (include_shared && !abort_requested)
+		CheckRelationFiles("global", GLOBALTABLESPACE_OID);
+
+	dir = AllocateDir(PG_TBLSPC_DIR);
+	while (!abort_requested && (de = ReadDir(dir, PG_TBLSPC_DIR)) != NULL)
+	{
+		Oid			spcoid = ChecksumDirectoryOid(de->d_name);
+
+		if (!OidIsValid(spcoid))
+			continue;
+		snprintf(path, sizeof(path), "%s/%s/%s/%u", PG_TBLSPC_DIR,
+				 de->d_name, TABLESPACE_VERSION_DIRECTORY, MyDatabaseId);
+		CheckRelationFiles(path, spcoid);
+	}
+	FreeDir(dir);
+	CommitTransactionCommand();
+}
+
+/*
+ * A worker cannot connect to a database absent from pg_database.  Inventory
+ * these directories separately so that their files cannot escape the check.
+ * Finish directory traversal before starting transactions, which
+ * close allocated directory descriptors at transaction end.
+ */
+static void
+CheckUnaccountedDatabaseFiles(void)
+{
+	List	   *tablespaces = list_make1(pstrdup("base"));
+	List	   *directories = NIL;
+	DIR		   *dir;
+	struct dirent *de;
+
+	dir = AllocateDir(PG_TBLSPC_DIR);
+	while ((de = ReadDir(dir, PG_TBLSPC_DIR)) != NULL)
+	{
+		CHECK_FOR_INTERRUPTS();
+		CHECK_FOR_LAUNCHER_ABORT_REQUEST();
+		if (abort_requested)
+			break;
+		if (OidIsValid(ChecksumDirectoryOid(de->d_name)))
+			tablespaces = lappend(tablespaces,
+								  psprintf("%s/%s/%s", PG_TBLSPC_DIR,
+										   de->d_name, TABLESPACE_VERSION_DIRECTORY));
+	}
+	FreeDir(dir);
+
+	foreach_ptr(char, path, tablespaces)
+	{
+		if (abort_requested)
+			break;
+		dir = AllocateDir(path);
+		if (dir == NULL && errno == ENOENT)
+			continue;
+		while ((de = ReadDir(dir, path)) != NULL)
+		{
+			CHECK_FOR_INTERRUPTS();
+			CHECK_FOR_LAUNCHER_ABORT_REQUEST();
+			if (abort_requested)
+				break;
+			if (OidIsValid(ChecksumDirectoryOid(de->d_name)))
+				directories = lappend(directories,
+									  psprintf("%s/%s", path, de->d_name));
+		}
+		FreeDir(dir);
+	}
+
+	foreach_ptr(char, path, directories)
+	{
+		Oid			dboid = ChecksumDirectoryOid(strrchr(path, '/') + 1);
+
+		CHECK_FOR_INTERRUPTS();
+		CHECK_FOR_LAUNCHER_ABORT_REQUEST();
+		if (abort_requested)
+			break;
+		StartTransactionCommand();
+		/*
+		 * Unlike the worker-failure path, we need not wait for a concurrent
+		 * DROP DATABASE to finish: if it has not committed, its directory is
+		 * still accounted for.  In particular, avoid taking a database object
+		 * lock here, which could block launcher cancellation behind DDL.
+		 */
+		if (!SearchSysCacheExists1(DATABASEOID, ObjectIdGetDatum(dboid)))
+			CheckRelationFiles(path, InvalidOid);
+		CommitTransactionCommand();
+	}
+	list_free_deep(directories);
+	list_free_deep(tablespaces);
+}
+
+/*
  * DataChecksumsWorkerMain
  *
  * Main function for enabling checksums in a single database. This is the
@@ -1896,6 +2137,12 @@ DataChecksumsWorkerMain(Datum arg)
 
 	list_free(RelationList);
 	FreeAccessStrategy(strategy);
+
+	if (!aborted && !abort_requested)
+	{
+		INJECTION_POINT("datachecksums-before-file-check", NULL);
+		CheckDatabaseFiles(process_shared);
+	}
 
 	if (aborted || abort_requested)
 	{

@@ -367,6 +367,38 @@
    </para>
 
    <para>
+    Before enabling completes, the primary also checks physical relation files
+    against the current relation mappings, including shared catalogs,
+    tablespaces, forks, and segments.  Nonempty files that cannot be accounted
+    for cause processing to fail and leave checksums disabled.  Such files can
+    be left behind by an interrupted relation creation or rewrite.  They are
+    not visited by the catalog-based checksum worker, but are included in
+    physical backups, where missing or stale checksums would cause verification
+    failures.  The check does not delete or modify these files.
+   </para>
+
+   <para>
+    The server log identifies the first unaccounted file.  Concurrent,
+    uncommitted relation creation or rewriting can also cause this conservative
+    check to fail; retry after that activity has finished.  If the file remains
+    unaccounted for, use <application>pg_checksums</application>
+    <option>--enable</option> with the cluster shut down to process all physical
+    relation files.  Follow the replication precautions in
+    <xref linkend="app-pgchecksums"/> when using the offline procedure.
+   </para>
+
+   <para>
+    This reconciliation checks files on the primary only.  Standbys replay the
+    checksum transition and page updates, but files that exist only on a standby
+    are not inspected or repaired by the primary's checksum worker.  Successful
+    online enabling therefore does not guarantee that standby-local orphan
+    files have valid checksums.  A physical backup from such a standby can still
+    report checksum failures.  Recreate the standby from a verified backup, or
+    use the coordinated offline procedure described in
+    <xref linkend="app-pgchecksums"/>.
+   </para>
+
+   <para>
     If the cluster is stopped while in <literal>inprogress-on</literal> state,
     for any reason, or processing was interrupted, then the checksum enable
     process must be restarted manually.  To do this, re-execute the function

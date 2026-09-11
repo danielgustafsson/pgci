@@ -49,6 +49,7 @@ tests += {
       't/023_rewind_standby_target.pl',
       't/024_combinebackup_mixed.pl',
       't/025_backup_orphans.pl',
+      't/026_reconciliation.pl',
     ],
   },
 }

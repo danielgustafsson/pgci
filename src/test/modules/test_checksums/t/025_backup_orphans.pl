@@ -1,15 +1,12 @@
 # Copyright (c) 2026, PostgreSQL Global Development Group
 
-# Reproduce checksum failures in base backups after online enabling leaves
-# orphan relation files untouched.  Unlike the transition races exercised in
-# 010_backup_straddle.pl, these failures persist after enabling and subsequent
-# checkpoints have completed.
+# Online enabling must reject orphan relation files rather than leave a
+# checksummed cluster whose base backups fail verification.
 #
 # Save heap files before dropping their relations, then restore them with the
 # server stopped.  This deterministically models the files left by a crashed
 # CREATE TABLE, without depending on the timing of crash recovery cleanup.
-# Assert the current failure, rather than suppressing verification or treating
-# catalog absence as sufficient reason for a backup to exclude a file.
+# Offline enabling remains the supported way to checksum these physical files.
 
 use strict;
 use warnings FATAL => 'all';
@@ -102,42 +99,56 @@ for my $kind ('missing', 'stale')
 			"$kind: $table file has no catalogued relation");
 	}
 
-	enable_data_checksums($node, wait => 'on');
+	# Each orphan must independently prevent enabling.  Remove the first one
+	# reported before retrying, without depending on directory traversal order.
+	my %remaining = reverse %paths;
+	while (%remaining)
+	{
+		my $offset = -s $node->logfile;
+		enable_data_checksums($node, wait => 'off');
+		ok( $node->poll_query_until(
+				'postgres',
+				"SELECT count(*) = 0 FROM pg_stat_activity "
+				  . "WHERE backend_type = 'datachecksums launcher';"),
+			"$kind: failed launcher exits");
+		my $log = slurp_file($node->logfile, $offset);
+		my ($path) =
+		  $log =~
+		  /cannot enable data checksums with unaccounted relation file "([^"]+)"/;
+		ok(defined($path), "$kind: reports unaccounted relation file");
+		like(
+			$log,
+			qr/Use pg_checksums --enable while the cluster is shut down to checksum all physical relation files\./,
+			"$kind: reports offline enabling hint");
+		BAIL_OUT("unexpected orphan path in log: $log")
+		  unless defined($path) && exists($remaining{$path});
+		my $table = delete $remaining{$path};
+		is( slurp_file($node->data_dir . "/$path"),
+			slurp_file("$saved/$table"),
+			"$kind: rejected $table orphan remains unchanged");
+		$node->stop;
+		unlink($node->data_dir . "/$path")
+		  or die "could not remove orphan $table: $!";
+		$node->start;
+		test_checksum_state($node, 'off');
+	}
 	is( $node->safe_psql(
 			'postgres', 'SELECT count(*) FROM live WHERE a = 2;'),
 		'1000',
-		"$kind: catalogued data remains readable after enabling");
-	for my $table (sort keys %paths)
-	{
-		is( slurp_file($node->data_dir . "/$paths{$table}"),
-			slurp_file("$saved/$table"),
-			"$kind: online enabling left $table orphan unchanged");
-	}
+		"$kind: catalogued data remains readable after rejection");
 
 	# Tar format avoids restoring the tablespace into its original location.
 	my $backupdir = $node->backup_dir . '/orphan';
 	my @backup = (
 		'pg_basebackup', '-D', $backupdir, '--format=tar',
 		'--wal-method=fetch', '--no-sync', '--checkpoint=fast');
-	my @failures = map {
-		my ($filename) = $paths{$_} =~ m{([^/]+)$};
-		qr/checksum verification failed in file "[^"]*\/\Q$filename\E", block/
-	} sort keys %paths;
-
-	for my $attempt (1 .. 2)
-	{
-		# In particular, another checkpoint cannot repair untouched orphans.
-		$node->safe_psql('postgres', 'CHECKPOINT;');
-		$node->command_checks_all(\@backup, 1, [qr/^$/], \@failures,
-			"$kind: backup reports both orphans after checkpoint $attempt");
-		rmtree($backupdir);
-	}
-
-	# Offline enabling scans physical files, including these same orphans.
-	# This is a control, not a proposed way for base backup to hide failures.
+	# Restore both unchanged orphans for the offline fallback.
 	$node->stop;
-	command_ok([ 'pg_checksums', '--disable', '-D', $node->data_dir ],
-		"$kind: disable checksums offline");
+	for my $table (sort keys %paths)
+	{
+		copy("$saved/$table", $node->data_dir . "/$paths{$table}")
+		  or die "could not restore orphan $table: $!";
+	}
 	command_ok([ 'pg_checksums', '--enable', '-D', $node->data_dir ],
 		"$kind: enable checksums offline");
 	command_ok(

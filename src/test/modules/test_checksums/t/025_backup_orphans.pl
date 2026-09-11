@@ -34,10 +34,11 @@ for my $kind ('missing', 'stale')
 	$node->append_conf('postgresql.conf', 'autovacuum = off');
 	$node->start;
 
-	my $tablespace = PostgreSQL::Test::Utils::tempdir();
-	my $tablespace_sql = $node->quote_str($tablespace);
+	my $tablespace = PostgreSQL::Test::Utils::tempdir_short();
+	my $tablespace_sql = $tablespace;
+	$tablespace_sql =~ s/'/''/g;
 	$node->safe_psql('postgres',
-		"CREATE TABLESPACE orphan_ts LOCATION $tablespace_sql;");
+		"CREATE TABLESPACE orphan_ts LOCATION '$tablespace_sql';");
 	$node->safe_psql(
 		'postgres', q{
 		CREATE TABLE live AS SELECT 1 AS a FROM generate_series(1,1000);
@@ -117,7 +118,7 @@ for my $kind ('missing', 'stale')
 	my $backupdir = $node->backup_dir . '/orphan';
 	my @backup = (
 		'pg_basebackup', '-D', $backupdir, '--format=tar',
-		'--wal-method=none', '--no-sync', '--checkpoint=fast');
+		'--wal-method=fetch', '--no-sync', '--checkpoint=fast');
 	my @failures = map {
 		my ($filename) = $paths{$_} =~ m{([^/]+)$};
 		qr/checksum verification failed in file "[^"]*\/\Q$filename\E", block/

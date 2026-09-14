@@ -1156,8 +1156,9 @@ launcher_exit(int code, Datum arg)
 		SetDataChecksumsOff();
 
 	LWLockAcquire(DataChecksumsWorkerLock, LW_EXCLUSIVE);
+	if (launcher_running)
+		DataChecksumState->launcher_running = false;
 	launcher_running = false;
-	DataChecksumState->launcher_running = false;
 	LWLockRelease(DataChecksumsWorkerLock);
 }
 
@@ -1395,6 +1396,8 @@ done:
 	/* Shut down progress reporting as we are done */
 	pgstat_progress_end_command();
 
+	launcher_running = false;
+	DataChecksumState->launcher_running = false;
 	LWLockRelease(DataChecksumsWorkerLock);
 }
 

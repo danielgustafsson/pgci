@@ -5159,11 +5159,11 @@ CheckReplayedDataChecksumState(uint32 replayed_state)
  * does not run ahead of the replay position.
  *
  * lsn is the location of the checkpoint-family record the state was taken from
- * and becomes the new watermark in case the state changed. The adopted state
- * covers everything below the redo point, which replay never revisits.  If the
- * state is unchanged, the records between the two positions are never
- * replayed, so nothing depends on which one is recorded so storing the new lsn
- * isn't needed.
+ * and becomes the new watermark if the state changed or the copied watermark
+ * is newer.  Even when the state matches, a newer watermark must be reset so
+ * that transitions between the redo point and that watermark are replayed.
+ * An older watermark can be kept if the state is unchanged, since replay
+ * never revisits records below the redo point.
  */
 static void
 AdoptReplayedDataChecksumState(uint32 new_version, XLogRecPtr lsn)
@@ -5171,7 +5171,8 @@ AdoptReplayedDataChecksumState(uint32 new_version, XLogRecPtr lsn)
 	bool		changed = false;
 
 	SpinLockAcquire(&XLogCtl->info_lck);
-	if (XLogCtl->data_checksum_version != new_version)
+	if (XLogCtl->data_checksum_version != new_version ||
+		XLogCtl->data_checksum_lsn > lsn)
 	{
 		XLogCtl->data_checksum_version = new_version;
 		XLogCtl->data_checksum_lsn = lsn;
@@ -6251,18 +6252,16 @@ StartupXLOG(void)
 	 * checksum state, which can lag the redo point of the last common
 	 * checkpoint the same way a restartpoint horizon can.
 	 *
-	 * Never adopt over a state the control file's watermark or local flag
-	 * marks as newer than the starting checkpoint.  A pg_checksums change is
-	 * local to the node and generates no WAL, so nothing in the replayed WAL
-	 * could ever restore it once overwritten; and a watermark above the redo
-	 * point means the control file already contains the effect of every
-	 * transition record up to there.
+	 * Never adopt over a node-local pg_checksums change: it generates no WAL,
+	 * so nothing in the replayed WAL could restore it once overwritten.
+	 * Otherwise, even a watermark above the redo point must not prevent
+	 * adoption.  A primary backup copies pg_control after the relation files,
+	 * which may still contain pages written before that watermark.
 	 */
 	if ((haveBackupLabel || XLogRecPtrIsValid(ControlFile->backupStartPoint)) &&
 		!(XLogRecPtrIsValid(ControlFile->backupEndPoint) &&
 		  ControlFile->backupEndRequired) &&
-		!ControlFile->data_checksum_is_local &&
-		checkPoint.redo > ControlFile->data_checksum_lsn)
+		!ControlFile->data_checksum_is_local)
 	{
 		if (wasShutdown)
 			AdoptReplayedDataChecksumState(checkPoint.dataChecksumState,

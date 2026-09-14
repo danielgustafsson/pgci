@@ -1389,6 +1389,12 @@ done:
 		operation = DataChecksumState->launch_operation;
 		DataChecksumState->cost_delay = DataChecksumState->launch_cost_delay;
 		DataChecksumState->cost_limit = DataChecksumState->launch_cost_limit;
+		/*
+		 * If the user started, but aborted processing, and then changed their
+		 * mind again before we had time to exit we need to clear the abort
+		 * flag.
+		 */
+		abort_requested = false;
 		LWLockRelease(DataChecksumsWorkerLock);
 		goto again;
 	}

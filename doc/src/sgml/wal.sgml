@@ -316,7 +316,6 @@
     application can be used to enable or disable data checksums, as well as
     verify checksums, on an offline cluster.
    </para>
-
   </sect2>
 
   <sect2 id="checksums-online-enable-disable" xreflabel="Online Enabling of Checksums">
@@ -365,6 +364,38 @@
     wait for all pre-existing temporary tables to get removed before it finishes.
     If long-lived temporary tables are used in an application it may be necessary
     to terminate these application connections to allow the process to complete.
+   </para>
+
+   <para>
+    Before enabling completes, the primary also checks physical relation files
+    against the current relation mappings, including shared catalogs,
+    tablespaces, forks, and segments.  Nonempty files that cannot be accounted
+    for cause processing to fail and leave checksums disabled.  Such files can
+    be left behind by an interrupted relation creation or rewrite.  They are
+    not visited by the catalog-based checksum worker, but are included in
+    physical backups, where missing or stale checksums would cause verification
+    failures.  The check does not delete or modify these files.
+   </para>
+
+   <para>
+    The server log identifies the first unaccounted file.  Concurrent,
+    uncommitted relation creation or rewriting can also cause this conservative
+    check to fail; retry after that activity has finished.  If the file remains
+    unaccounted for, use <application>pg_checksums</application>
+    <option>--enable</option> with the cluster shut down to process all physical
+    relation files.  Follow the replication precautions in
+    <xref linkend="app-pgchecksums"/> when using the offline procedure.
+   </para>
+
+   <para>
+    This reconciliation checks files on the primary only.  Standbys replay the
+    checksum transition and page updates, but files that exist only on a standby
+    are not inspected or repaired by the primary's checksum worker.  Successful
+    online enabling therefore does not guarantee that standby-local orphan
+    files have valid checksums.  A physical backup from such a standby can still
+    report checksum failures.  Recreate the standby from a verified backup, or
+    use the coordinated offline procedure described in
+    <xref linkend="app-pgchecksums"/>.
    </para>
 
    <para>
@@ -433,7 +464,43 @@
      still required.
     </para>
    </sect3>
+  </sect2>
 
+  <sect2 id="checksums-mismatched-states">
+   <title>Mismatched Data Checksums States in a Replicated Cluster</title>
+   <para>
+    The primary and secondaries can end up with different data checksums
+    states due to the different durability models between offline and online
+    checksum operations.
+   </para>
+   <para>
+    An online transition is WAL-logged, which means that it is replayed after a
+    crash, and the transition along with all checksum updates are propagated to
+    standbys.  An offline change is recorded only in the cluster's control
+    file, it writes no WAL and is invisible to replication.  The changes made
+    to the datafiles to write checksums are not WAL logged. This means that it
+    has no defined ordering against WAL the node has not replayed yet.  When a
+    node later replays WAL that contains an online checksum state change, that
+    change takes effect on the node even if it was written before the offline
+    change was made.
+   </para>
+
+   <para>
+    An offline change only affects the data directory it is run on; the new
+    state does not propagate over replication.  This means that all nodes can
+    be operated on in parallel, and no additional network traffic or WAL
+    archive traffic will occur.  In a replication setup the same change must be
+    applied to all nodes while all of them are stopped, as described in
+    <xref linkend="app-pgchecksums"/>.  A standby whose state diverges logs a
+    warning but keeps its local setting.  The mismatch persists until the
+    states are brought together again, with the offline procedure or with an
+    online transition.
+   </para>
+
+   <para>
+    Running a replicated cluster with different data checksum states on the
+    different nodes is not supported or recommended.
+   </para>
   </sect2>
  </sect1>
 

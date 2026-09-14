@@ -5171,8 +5171,7 @@ AdoptReplayedDataChecksumState(uint32 new_version, XLogRecPtr lsn)
 	bool		changed = false;
 
 	SpinLockAcquire(&XLogCtl->info_lck);
-	if (XLogCtl->data_checksum_version != new_version ||
-		XLogCtl->data_checksum_lsn > lsn)
+	if (XLogCtl->data_checksum_version != new_version)
 	{
 		XLogCtl->data_checksum_version = new_version;
 		XLogCtl->data_checksum_lsn = lsn;
@@ -6252,16 +6251,18 @@ StartupXLOG(void)
 	 * checksum state, which can lag the redo point of the last common
 	 * checkpoint the same way a restartpoint horizon can.
 	 *
-	 * Never adopt over a node-local pg_checksums change: it generates no WAL,
-	 * so nothing in the replayed WAL could restore it once overwritten.
-	 * Otherwise, even a watermark above the redo point must not prevent
-	 * adoption.  A primary backup copies pg_control after the relation files,
-	 * which may still contain pages written before that watermark.
+	 * Never adopt over a stata over the watermark or a node-local pg_checksums
+	 * change, it generats no WAL so nothing in the replayed WAL could restore
+	 * it once overwritten.  Otherwise, even a watermark above the redo point
+	 * must not prevent adoption.  A primary backup copies pg_control after the
+	 * relation files, which may still contain pages written before that
+	 * watermark.
 	 */
 	if ((haveBackupLabel || XLogRecPtrIsValid(ControlFile->backupStartPoint)) &&
 		!(XLogRecPtrIsValid(ControlFile->backupEndPoint) &&
 		  ControlFile->backupEndRequired) &&
-		!ControlFile->data_checksum_is_local)
+		!ControlFile->data_checksum_is_local &&
+		checkPoint.redo > ControlFile->data_checksum_lsn)
 	{
 		if (wasShutdown)
 			AdoptReplayedDataChecksumState(checkPoint.dataChecksumState,

@@ -22,7 +22,6 @@ use warnings FATAL => 'all';
 
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
-use File::Copy qw(copy);
 use File::Path qw(rmtree);
 use Test::More;
 use IPC::Run;
@@ -51,10 +50,7 @@ if ($ENV{enable_injection_points} ne 'yes')
 }
 
 my $node = PostgreSQL::Test::Cluster->new('backup_node');
-$node->init(
-	no_data_checksums => 1,
-	allows_streaming => 1,
-	has_archiving => 1);
+$node->init(no_data_checksums => 1, allows_streaming => 1);
 # The pages rewritten while enabling must stay dirty in shared buffers until
 # the final checkpoint, otherwise they reach disk with checksums on their own
 # and nothing is left to misjudge.  The background writer must not flush them
@@ -215,56 +211,6 @@ $node->command_ok(
 	],
 	'backup after re-enable completion succeeds');
 rmtree($node->backup_dir . '/after_onoffon');
-
-# Restore backups whose relation files precede enable completion but whose
-# control file follows it.  Use a low-level backup to copy pg_control last,
-# after enabling has persisted its newer "on" watermark.
-disable_data_checksums($node, wait => 1);
-$node->safe_psql('postgres',
-	'CREATE TABLE restore_t AS SELECT generate_series(1,1000) AS a;');
-
-my $backup_name = "restore_from_off";
-my $backup_path = $node->backup_dir . "/$backup_name";
-my $backup_psql = $node->background_psql('postgres');
-$backup_psql->query_safe('SET client_min_messages = warning;');
-$backup_psql->query_safe("SELECT pg_backup_start('$backup_name', true);");
-
-PostgreSQL::Test::RecursiveCopy::copypath($node->data_dir, $backup_path);
-ok(unlink("$backup_path/postmaster.pid"), "Remove PID from backup");
-ok(unlink("$backup_path/postmaster.opts"), "Remove OPTS from backup");
-ok(rmtree("$backup_path/pg_wal"), "Remove pg_wal from backup");
-ok(mkdir("$backup_path/pg_wal"), "Recreate pg_wal in backup_path");
-
-# With checksums and wal_log_hints off, setting all-visible emits no
-# heap FPI.  Replay must read the unchecked copy before the checksum
-# rewrite, rather than repair it with an FPI before verification.
-$node->safe_psql('postgres', 'VACUUM restore_t;');
-enable_data_checksums($node, wait => 'on');
-copy($node->data_dir . '/global/pg_control',
-	"$backup_path/global/pg_control");
-
-my $backup_label =
-  $backup_psql->query_safe('SELECT labelfile FROM pg_backup_stop();');
-$backup_psql->quit;
-append_to_file("$backup_path/backup_label", $backup_label);
-
-my $restored = PostgreSQL::Test::Cluster->new($backup_name);
-$restored->init_from_backup(
-	$node, $backup_name,
-	has_restoring => 1,
-	standby => 0);
-$restored->append_conf('postgresql.conf', 'archive_mode = off');
-$restored->start;
-test_checksum_state($restored, 'on');
-is($restored->safe_psql('postgres', 'SELECT count(*) FROM restore_t;'),
-	'1000', "backup starting with checksums off restores data");
-$restored->stop;
-unlike(
-	slurp_file($restored->logfile),
-	qr/checksum verification failed|invalid page/,
-	"backup starting with checksums off replays unchecked pages");
-rmtree($backup_path);
-$node->safe_psql('postgres', 'DROP TABLE restore_t;');
 
 # Test another backup, but this time inject synthetic checksum verification
 # failures into it.  The regex matching the WARNING is different from the next

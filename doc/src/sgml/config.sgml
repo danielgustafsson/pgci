@@ -1780,6 +1780,16 @@ include_dir 'conf.d'
         <xref linkend="ssl-sni"/> for more details.
        </para>
        <para>
+        This parameter reports the requested configuration, not necessarily the
+        active SSL configuration.  If reloading the SSL configuration fails,
+        the previous SSL configuration, including its SNI setting, remains
+        active even though the value reported by <command>SHOW</command> has
+        changed.  The requested setting takes effect when the SSL configuration
+        is successfully reloaded.  On <systemitem class="osname">Windows</systemitem>,
+        new server processes load the SSL configuration independently and
+        cannot use the previous configuration if loading fails.
+       </para>
+       <para>
         This parameter can only be set in the <filename>postgresql.conf</filename>
         file or on the server command line.  The default is <literal>off</literal>.
        </para>

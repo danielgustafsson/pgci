@@ -125,6 +125,9 @@ static struct hosts
 	 * matches the supplied hostname in the SNI extension.
 	 */
 	HostsLine  *default_host;
+
+	/* Whether this SSL configuration was loaded with SNI enabled */
+	bool		sni_enabled;
 }		   *SSL_hosts;
 
 static bool dummy_ssl_passwd_cb_called = false;
@@ -177,6 +180,7 @@ be_tls_init(bool isServerStart)
 
 	/* Allocate a tentative replacement for SSL_hosts. */
 	new_hosts = palloc0_object(struct hosts);
+	new_hosts->sni_enabled = ssl_sni;
 
 	/*
 	 * Register a reset callback for the memory context which is responsible
@@ -204,7 +208,7 @@ be_tls_init(bool isServerStart)
 	 * we set res to the state and continue with a new conditional instead of
 	 * duplicating logic and risk it diverging over time.
 	 */
-	if (ssl_sni)
+	if (new_hosts->sni_enabled)
 	{
 		/*
 		 * The GUC check hook should have already blocked this but to be on
@@ -574,6 +578,18 @@ error:
 	if (context)
 		SSL_CTX_free(context);
 
+	/*
+	 * Retain the SNI mode of the active SSL configuration, but leave ssl_sni
+	 * unchanged: it describes the requested configuration, which existing
+	 * backends also reload independently.
+	 */
+	if (SSL_context && SSL_hosts && SSL_hosts->sni_enabled != ssl_sni)
+		ereport(WARNING,
+				errcode(ERRCODE_CONFIG_FILE_ERROR),
+				SSL_hosts->sni_enabled ?
+				errmsg("SSL configuration not reloaded, SNI remains enabled in the active SSL configuration") :
+				errmsg("SSL configuration not reloaded, SNI remains disabled in the active SSL configuration"));
+
 	MemoryContextSwitchTo(oldcxt);
 	MemoryContextDelete(host_memcxt);
 	return -1;
@@ -885,7 +901,7 @@ be_tls_open_server(Port *port)
 	/*
 	 * If the underlying TLS library supports the client hello callback we use
 	 * that in order to support host based configuration using the SNI TLS
-	 * extension.  If the user has disabled SNI via the ssl_sni GUC we still
+	 * extension.  If SNI is disabled in the active SSL configuration we still
 	 * make use of the callback in order to have consistent handling of
 	 * OpenSSL contexts, except in that case the callback will install the
 	 * default configuration regardless of the hostname sent by the user in
@@ -1934,9 +1950,11 @@ sni_clienthello_cb(SSL *ssl, int *al, void *arg)
 				len;
 	HostsLine  *install_config = NULL;
 
-	if (!ssl_sni)
+	if (!SSL_hosts->sni_enabled)
 	{
+		/* A configuration loaded without SNI must have a default host */
 		install_config = SSL_hosts->default_host;
+		Assert(install_config != NULL);
 		goto found;
 	}
 

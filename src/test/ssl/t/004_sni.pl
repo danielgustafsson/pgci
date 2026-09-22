@@ -7,6 +7,7 @@ use warnings FATAL => 'all';
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
+use Time::HiRes qw(usleep);
 
 use FindBin;
 use lib $FindBin::RealBin;
@@ -54,6 +55,12 @@ $ssl_server->configure_test_server_for_ssl($node, $SERVERHOSTADDR,
 	$SERVERHOSTCIDR, 'trust');
 
 $ssl_server->switch_server_cert($node, certfile => 'server-cn-only');
+$node->safe_psql(
+	'trustdb',
+	'GRANT pg_read_all_settings TO ssltestuser',
+	connstr =>
+	  "dbname=trustdb hostaddr=$SERVERHOSTADDR sslrootcert=ssl/root+server_ca.crt sslmode=require"
+);
 
 my $connstr =
   "user=ssltestuser dbname=trustdb hostaddr=$SERVERHOSTADDR sslsni=1";
@@ -262,6 +269,149 @@ $node->connect_fails(
 	"$connstr sslrootcert=ssl/root+server_ca.crt sslmode=require host=example",
 	"pg_hosts.conf: connect to 'example' with sslmode=require",
 	expected_stderr => qr/unrecognized name/);
+
+# Keep an SSL session open while changing the requested SNI mode.  A failed
+# reload must retain the active SSL configuration, but not the old GUC value.
+my $sni_session = $node->background_psql(
+	'trustdb',
+	connstr =>
+	  "$connstr host=example.org sslrootcert=ssl/root_ca.crt sslmode=verify-ca");
+is($sni_session->query_safe('SHOW ssl_sni'), 'on',
+	'existing SSL session initially reports ssl_sni=on');
+
+$node->append_conf(
+	'postgresql.conf', qq{
+ssl_sni = off
+ssl_cert_file = 'missing-server.crt'
+});
+my $reload_log_location = -s $node->logfile;
+$node->reload;
+$node->wait_for_log(qr/SSL configuration was not reloaded/,
+	$reload_log_location);
+like(
+	slurp_file($node->logfile, $reload_log_location),
+	qr/SSL configuration not reloaded, SNI remains enabled in the active SSL configuration/,
+	'failed on-to-off reload reports the retained SNI mode');
+is($sni_session->query_safe('SHOW ssl_sni'), 'off',
+	'existing SSL session reports requested ssl_sni=off after failed reload');
+
+SKIP:
+{
+	# EXEC_BACKEND children load SSL configuration afresh, rather than
+	# inheriting the postmaster's retained contexts.
+	skip "SSL contexts are not inherited on Windows and EXEC_BACKEND", 7
+	  if ($windows_os || $exec_backend =~ /on/);
+
+	$node->connect_ok(
+		"$connstr host=example.org sslrootcert=ssl/root_ca.crt sslmode=verify-ca",
+		'failed on-to-off reload retains the named host certificate',
+		sql => 'SHOW ssl_sni',
+		expected_stdout => qr/^off$/);
+	$node->connect_fails(
+		"$connstr host=example.com sslrootcert=ssl/root+server_ca.crt sslmode=require",
+		'failed on-to-off reload still rejects an unknown SNI name',
+		expected_stderr => qr/unrecognized name/);
+	$node->connect_fails(
+		"$connstr sslsni=0 sslrootcert=ssl/root+server_ca.crt sslmode=require",
+		'failed on-to-off reload still rejects connections without SNI',
+		expected_stderr => qr/handshake failure/);
+}
+
+# There is no success log message for SSL reloads.  Wait for a handshake that
+# only the repaired configuration can satisfy, not merely for SIGHUP receipt
+# or for the GUC to change.
+my $wait_for_ssl_reload = sub {
+	my ($connection, $mode) = @_;
+	my ($ret, $stdout, $stderr);
+	for (my $attempt = 0;
+		$attempt < 10 * $PostgreSQL::Test::Utils::timeout_default;
+		$attempt++)
+	{
+		($ret, $stdout, $stderr) = $node->psql(
+			'trustdb', 'SHOW ssl_sni',
+			connstr => $connection);
+		return if $ret == 0 && $stdout eq $mode && $stderr eq '';
+		usleep(100_000);
+	}
+	die "SSL reload did not become active: $ret, $stdout, $stderr";
+};
+
+# Repair the certificate without setting ssl_sni again.  The previously
+# requested mode must now become active.
+$node->append_conf('postgresql.conf',
+	"ssl_cert_file = 'server-cn-only.crt'");
+$node->reload;
+$wait_for_ssl_reload->(
+	"$connstr host=example.com sslrootcert=ssl/root+server_ca.crt sslmode=require",
+	'off');
+$node->connect_ok(
+	"$connstr host=example.com sslrootcert=ssl/root+server_ca.crt sslmode=require",
+	'repaired on-to-off reload accepts an unknown SNI name',
+	sql => 'SHOW ssl_sni',
+	expected_stdout => qr/^off$/);
+$node->connect_ok(
+	"$connstr sslsni=0 sslrootcert=ssl/root+server_ca.crt sslmode=require",
+	'repaired on-to-off reload accepts connections without SNI');
+is($sni_session->query_safe('SHOW ssl_sni'), 'off',
+	'existing SSL session survives recovery with ssl_sni=off');
+
+# Now fail the opposite mode change by making a named host's key invalid.
+ok(unlink($node->data_dir . '/pg_hosts.conf'));
+$node->append_conf('pg_hosts.conf',
+	"example.org server-cn-only+server_ca.crt missing-server.key root_ca.crt");
+$node->append_conf('postgresql.conf', 'ssl_sni = on');
+$reload_log_location = -s $node->logfile;
+$node->reload;
+$node->wait_for_log(qr/SSL configuration was not reloaded/,
+	$reload_log_location);
+like(
+	slurp_file($node->logfile, $reload_log_location),
+	qr/SSL configuration not reloaded, SNI remains disabled in the active SSL configuration/,
+	'failed off-to-on reload reports the retained SNI mode');
+is($sni_session->query_safe('SHOW ssl_sni'), 'on',
+	'existing SSL session reports requested ssl_sni=on after failed reload');
+
+SKIP:
+{
+	skip "SSL contexts are not inherited on Windows and EXEC_BACKEND", 6
+	  if ($windows_os || $exec_backend =~ /on/);
+
+	$node->connect_ok(
+		"$connstr host=example.com sslrootcert=ssl/root+server_ca.crt sslmode=require",
+		'failed off-to-on reload still accepts an unknown SNI name',
+		sql => 'SHOW ssl_sni',
+		expected_stdout => qr/^on$/);
+	$node->connect_ok(
+		"$connstr sslsni=0 sslrootcert=ssl/root+server_ca.crt sslmode=require",
+		'failed off-to-on reload still accepts connections without SNI',
+		sql => 'SHOW ssl_sni',
+		expected_stdout => qr/^on$/);
+}
+
+# Again repair only the SSL files, leaving the requested GUC value untouched.
+ok(unlink($node->data_dir . '/pg_hosts.conf'));
+$node->append_conf('pg_hosts.conf',
+	"example.org server-cn-only+server_ca.crt server-cn-only.key root_ca.crt");
+$node->reload;
+$wait_for_ssl_reload->(
+	"$connstr host=example.org sslrootcert=ssl/root_ca.crt sslmode=verify-ca",
+	'on');
+$node->connect_ok(
+	"$connstr host=example.org sslrootcert=ssl/root_ca.crt sslmode=verify-ca",
+	'repaired off-to-on reload serves the named host certificate',
+	sql => 'SHOW ssl_sni',
+	expected_stdout => qr/^on$/);
+$node->connect_fails(
+	"$connstr host=example.com sslrootcert=ssl/root+server_ca.crt sslmode=require",
+	'repaired off-to-on reload rejects an unknown SNI name',
+	expected_stderr => qr/unrecognized name/);
+$node->connect_fails(
+	"$connstr sslsni=0 sslrootcert=ssl/root+server_ca.crt sslmode=require",
+	'repaired off-to-on reload rejects connections without SNI',
+	expected_stderr => qr/handshake failure/);
+is($sni_session->query_safe('SHOW ssl_sni'), 'on',
+	'existing SSL session survives recovery with ssl_sni=on');
+$sni_session->quit;
 
 # Reconfigure with broken configuration for the key passphrase, the server
 # should not start up

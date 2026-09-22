@@ -1,0 +1,1 @@
+/home/runner/work/pgci/pgci/src/test/modules/spgist_name_ops/Makefile

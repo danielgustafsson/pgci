@@ -318,8 +318,9 @@ SKIP:
 }
 
 # There is no success log message for SSL reloads.  Wait for a handshake that
-# only the repaired configuration can satisfy, not merely for SIGHUP receipt
-# or for the GUC to change.
+# only the repaired configuration can satisfy, not merely for the GUC to
+# change.  First wait for SIGHUP processing, since EXEC_BACKEND children could
+# load the repaired files even before the postmaster starts reloading them.
 my $wait_for_ssl_reload = sub {
 	my ($connection, $mode) = @_;
 	my ($ret, $stdout, $stderr);
@@ -340,7 +341,9 @@ my $wait_for_ssl_reload = sub {
 # requested mode must now become active.
 $node->append_conf('postgresql.conf',
 	"ssl_cert_file = 'server-cn-only.crt'");
+$reload_log_location = -s $node->logfile;
 $node->reload;
+$node->wait_for_log(qr/reloading configuration files/, $reload_log_location);
 $wait_for_ssl_reload->(
 	"$connstr host=example.com sslrootcert=ssl/root+server_ca.crt sslmode=require",
 	'off');
@@ -392,7 +395,9 @@ SKIP:
 ok(unlink($node->data_dir . '/pg_hosts.conf'));
 $node->append_conf('pg_hosts.conf',
 	"example.org server-cn-only+server_ca.crt server-cn-only.key root_ca.crt");
+$reload_log_location = -s $node->logfile;
 $node->reload;
+$node->wait_for_log(qr/reloading configuration files/, $reload_log_location);
 $wait_for_ssl_reload->(
 	"$connstr host=example.org sslrootcert=ssl/root_ca.crt sslmode=verify-ca",
 	'on');

@@ -1,1 +1,0 @@
-/home/runner/work/pgci/pgci/contrib/basebackup_to_shell/Makefile

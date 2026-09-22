@@ -1,1 +1,0 @@
-/home/runner/work/pgci/pgci/src/backend/utils/mb/conversion_procs/euc2004_sjis2004/Makefile

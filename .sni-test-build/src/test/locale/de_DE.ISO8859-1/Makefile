@@ -1,1 +1,0 @@
-/home/runner/work/pgci/pgci/src/test/locale/de_DE.ISO8859-1/Makefile

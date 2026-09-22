@@ -1,1 +1,0 @@
-/home/runner/work/pgci/pgci/contrib/pg_logicalinspect/Makefile

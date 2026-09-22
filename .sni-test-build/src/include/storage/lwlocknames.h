@@ -1,1 +1,0 @@
-/home/runner/work/pgci/pgci/.sni-test-build/src/backend/storage/lmgr/lwlocknames.h

@@ -1,1 +1,0 @@
-/home/runner/work/pgci/pgci/src/test/locale/koi8-r/Makefile

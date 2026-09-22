@@ -1,1 +1,0 @@
-/home/runner/work/pgci/pgci/src/bin/pg_walsummary/Makefile

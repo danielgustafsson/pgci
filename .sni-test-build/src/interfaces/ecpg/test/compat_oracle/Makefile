@@ -1,1 +1,0 @@
-/home/runner/work/pgci/pgci/src/interfaces/ecpg/test/compat_oracle/Makefile

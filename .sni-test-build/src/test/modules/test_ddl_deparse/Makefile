@@ -1,1 +1,0 @@
-/home/runner/work/pgci/pgci/src/test/modules/test_ddl_deparse/Makefile

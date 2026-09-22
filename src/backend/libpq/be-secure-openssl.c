@@ -583,8 +583,8 @@ error:
 
 	/*
 	 * If the initialization failed, and the ssl_sni setting was changed, we
-	 * need to revert ssl_sni back to the previous setting to match the SSL
-	 * configuration left in place.  Log a WARNING to alert the user.
+	 * issue a WARNING to indicate that the ssl_sni setting wont match the SSL
+	 * configuration in use.
 	 */
 	if (SSL_context && SSL_hosts && SSL_hosts->sni_enabled != ssl_sni)
 	{

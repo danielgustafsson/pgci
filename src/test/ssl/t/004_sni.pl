@@ -266,9 +266,12 @@ $node->connect_fails(
 # Turn off SNI while the postgresql.conf configuration cannot be loaded, such
 # that the reload fails to replace the SSL configuration.  The pg_hosts.conf
 # configuration without a default host must remain in effect, ssl_sni will be
-# reverted back to "on" and connections must behave as before the reload.
-
-my $bsession = $node->background_psql('trustdb', connstr => "$connstr host=example.org sslrootcert=ssl/root_ca.crt sslmode=verify-ca");
+# set to 'off' but the previous config - including ssl_sni setting - is what
+# will be used.
+my $bsession = $node->background_psql('trustdb',
+	connstr =>
+	  "$connstr host=example.org sslrootcert=ssl/root_ca.crt sslmode=verify-ca"
+);
 $result = $bsession->query_safe('SHOW ssl_sni');
 is($result, 'on', 'SNI is enabled in active config for background session');
 
@@ -281,7 +284,7 @@ my $node_loglocation = -s $node->logfile;
 $node->reload;
 
 $node->wait_for_log(qr/SSL configuration was not reloaded/,
-$node_loglocation);
+	$node_loglocation);
 my $log =
   PostgreSQL::Test::Utils::slurp_file($node->logfile, $node_loglocation);
 like(

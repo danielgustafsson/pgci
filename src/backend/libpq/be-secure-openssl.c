@@ -588,10 +588,9 @@ error:
 	 */
 	if (SSL_context && SSL_hosts && SSL_hosts->sni_enabled != ssl_sni)
 	{
-		ssl_sni = SSL_hosts->sni_enabled;
 		ereport(WARNING,
 				errcode(ERRCODE_CONFIG_FILE_ERROR),
-				errmsg("SSL configuration not reloaded, SNI is still %s", ssl_sni ? "on" : "off"),
+				errmsg("SSL configuration not reloaded, SNI is still %s", SSL_hosts->sni_enabled ? "on" : "off"),
 				errdetail("The SSL configuration failed to reload, previous configuration and SNI state will remain active."));
 	}
 
@@ -661,7 +660,7 @@ init_host_context(HostsLine *host, bool isServerStart, bool *hasWarned)
 	 *
 	 * If SNI is enabled, we set password callback based what was configured.
 	 */
-	if (!ssl_sni)
+	if ((SSL_hosts && !SSL_hosts->sni_enabled) || !ssl_sni)
 		(*openssl_tls_init_hook) (ctx, isServerStart);
 	else
 	{

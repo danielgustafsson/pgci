@@ -263,6 +263,52 @@ $node->connect_fails(
 	"pg_hosts.conf: connect to 'example' with sslmode=require",
 	expected_stderr => qr/unrecognized name/);
 
+# Turn off SNI while the postgresql.conf configuration cannot be loaded, such
+# that the reload fails to replace the SSL configuration.  The pg_hosts.conf
+# configuration without a default host must remain in effect, ssl_sni will be
+# reverted back to "on" and connections must behave as before the reload.
+my $node_loglocation = -s $node->logfile;
+$node->append_conf(
+	'postgresql.conf', qq{
+ssl_sni = off
+ssl_cert_file = 'nonexistent.crt'
+});
+$node->reload;
+
+$node->wait_for_log(qr/SSL configuration was not reloaded/,
+	$node_loglocation);
+my $log =
+  PostgreSQL::Test::Utils::slurp_file($node->logfile, $node_loglocation);
+like(
+	$log,
+	qr/SNI is still on/,
+	'SSL reload triggered WARNING on ssl_sni state');
+my ($rc, $stdout, $stderr) = $node->psql(
+	'trustdb',
+	qq[SHOW ssl_sni;],
+	connstr =>
+	  "$connstr sslrootcert=ssl/root+server_ca.crt sslmode=require host=example.org"
+);
+is($rc, 0,
+	"pg_hosts.conf: connect to example.org after failed reload with ssl_sni off"
+);
+is($stdout, 'on', 'ssl_sni remains enabled');
+$node_loglocation = -s $node->logfile;
+
+$node->connect_fails(
+	"$connstr sslrootcert=ssl/root+server_ca.crt sslmode=require sslsni=0",
+	"pg_hosts.conf: connect to default after failed reload with ssl_sni off",
+	expected_stderr => qr/handshake failure/);
+
+$node->append_conf(
+	'postgresql.conf', qq{
+ssl_sni = on
+ssl_cert_file = 'server-cn-only.crt'
+});
+$node->reload;
+$log = PostgreSQL::Test::Utils::slurp_file($node->logfile, $node_loglocation);
+unlike($log, qr/WARNING/, 'No WARNING on correct configuration');
+
 # Reconfigure with broken configuration for the key passphrase, the server
 # should not start up
 ok(unlink($node->data_dir . '/pg_hosts.conf'));
@@ -309,13 +355,12 @@ ok(unlink($node->data_dir . '/pg_hosts.conf'));
 $node->append_conf('pg_hosts.conf',
 	'localhost server-cn-only.crt server-password.key root+client_ca.crt "echo secret1" off'
 );
-my $node_loglocation = -s $node->logfile;
+$node_loglocation = -s $node->logfile;
 $result = $node->restart(fail_ok => 1);
 is($result, 1,
 	'pg_hosts.conf: restart succeeds with password-protected key when using the correct passphrase command'
 );
-my $log =
-  PostgreSQL::Test::Utils::slurp_file($node->logfile, $node_loglocation);
+$log = PostgreSQL::Test::Utils::slurp_file($node->logfile, $node_loglocation);
 unlike(
 	$log,
 	qr/cannot be reloaded because it requires a passphrase/,

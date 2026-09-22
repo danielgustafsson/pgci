@@ -125,6 +125,11 @@ static struct hosts
 	 * matches the supplied hostname in the SNI extension.
 	 */
 	HostsLine  *default_host;
+
+	/*
+	 * Whether the configuration was loaded with ssl_sni enabled.
+	 */
+	bool		sni_enabled;
 }		   *SSL_hosts;
 
 static bool dummy_ssl_passwd_cb_called = false;
@@ -177,6 +182,7 @@ be_tls_init(bool isServerStart)
 
 	/* Allocate a tentative replacement for SSL_hosts. */
 	new_hosts = palloc0_object(struct hosts);
+	new_hosts->sni_enabled = ssl_sni;
 
 	/*
 	 * Register a reset callback for the memory context which is responsible
@@ -204,7 +210,7 @@ be_tls_init(bool isServerStart)
 	 * we set res to the state and continue with a new conditional instead of
 	 * duplicating logic and risk it diverging over time.
 	 */
-	if (ssl_sni)
+	if (new_hosts->sni_enabled)
 	{
 		/*
 		 * The GUC check hook should have already blocked this but to be on
@@ -565,14 +571,29 @@ be_tls_init(bool isServerStart)
 
 	return 0;
 
+error:
+
 	/*
 	 * Clean up by releasing working SSL contexts as well as allocations
 	 * performed during parsing.  Since all our allocations are done in a
 	 * local memory context all we need to do is delete it.
 	 */
-error:
 	if (context)
 		SSL_CTX_free(context);
+
+	/*
+	 * If the initialization failed, and the ssl_sni setting was changed, we
+	 * need to revert ssl_sni back to the previous setting to match the SSL
+	 * configuration left in place.  Log a WARNING to alert the user.
+	 */
+	if (SSL_hosts->sni_enabled != ssl_sni)
+	{
+		ssl_sni = SSL_hosts->sni_enabled;
+		ereport(WARNING,
+				errcode(ERRCODE_CONFIG_FILE_ERROR),
+				errmsg("SSL configuration not reloaded, SNI is still %s", ssl_sni ? "on" : "off"),
+				errdetail("The SSL configuration failed to reload, previous configuration and SNI state will remain active."));
+	}
 
 	MemoryContextSwitchTo(oldcxt);
 	MemoryContextDelete(host_memcxt);
@@ -1934,9 +1955,11 @@ sni_clienthello_cb(SSL *ssl, int *al, void *arg)
 				len;
 	HostsLine  *install_config = NULL;
 
-	if (!ssl_sni)
+	if (!SSL_hosts->sni_enabled)
 	{
+		/* A configuration loaded without SNI must have a default host */
 		install_config = SSL_hosts->default_host;
+		Assert(install_config != NULL);
 		goto found;
 	}
 

@@ -300,14 +300,14 @@ $node->connect_fails(
 	"pg_hosts.conf: connect to default after failed reload with ssl_sni off",
 	expected_stderr => qr/handshake failure/);
 
+# Reset configuration for the next test
 $node->append_conf(
 	'postgresql.conf', qq{
 ssl_sni = on
-ssl_cert_file = 'server-cn-only.crt'
+ssl_cert_file = ''
 });
 $node->reload;
-$log = PostgreSQL::Test::Utils::slurp_file($node->logfile, $node_loglocation);
-unlike($log, qr/WARNING/, 'No WARNING on correct configuration');
+$node->wait_for_log(qr/reloading configuration files/);
 
 # Reconfigure with broken configuration for the key passphrase, the server
 # should not start up

@@ -586,7 +586,7 @@ error:
 	 * need to revert ssl_sni back to the previous setting to match the SSL
 	 * configuration left in place.  Log a WARNING to alert the user.
 	 */
-	if (SSL_hosts->sni_enabled != ssl_sni)
+	if (SSL_context && SSL_hosts && SSL_hosts->sni_enabled != ssl_sni)
 	{
 		ssl_sni = SSL_hosts->sni_enabled;
 		ereport(WARNING,

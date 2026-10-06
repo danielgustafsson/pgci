@@ -42,8 +42,7 @@ $node->safe_psql('postgres', 'CREATE USER test;');
 my $issuer = "https://256.256.256.256";
 my $scope = "openid postgres";
 
-unlink($node->data_dir . '/pg_hba.conf');
-$node->append_conf(
+$node->replace_conf(
 	'pg_hba.conf', qq{
 local all test oauth issuer="$issuer" scope="$scope"
 });

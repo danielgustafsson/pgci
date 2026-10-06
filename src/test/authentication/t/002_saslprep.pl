@@ -23,8 +23,7 @@ sub reset_pg_hba
 	my $node = shift;
 	my $hba_method = shift;
 
-	unlink($node->data_dir . '/pg_hba.conf');
-	$node->append_conf('pg_hba.conf', "local all all $hba_method");
+	$node->replace_conf('pg_hba.conf', "local all all $hba_method");
 	$node->reload;
 	return;
 }

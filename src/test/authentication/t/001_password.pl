@@ -30,9 +30,8 @@ sub reset_pg_hba
 	my $role = shift;
 	my $hba_method = shift;
 
-	unlink($node->data_dir . '/pg_hba.conf');
 	# just for testing purposes, use a continuation line
-	$node->append_conf('pg_hba.conf',
+	$node->replace_conf('pg_hba.conf',
 		"local $database $role\\\n $hba_method");
 	$node->reload;
 	return;

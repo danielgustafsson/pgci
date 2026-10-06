@@ -72,8 +72,7 @@ sub test_access
 
 note "use ldapbindpasswd";
 
-unlink($node->data_dir . '/pg_hba.conf');
-$node->append_conf('pg_hba.conf',
+$node->replace_conf('pg_hba.conf',
 	qq{local all all ldap ldapserver=$ldap_server ldapport=$ldap_port ldapbasedn="$ldap_basedn" ldapbinddn="$ldap_rootdn ldapbindpasswd=wrong}
 );
 $node->restart;
@@ -82,8 +81,7 @@ $ENV{"PGPASSWORD"} = 'secret1';
 test_access($node, 'test1', 2,
 	'search+bind authentication fails with wrong ldapbindpasswd');
 
-unlink($node->data_dir . '/pg_hba.conf');
-$node->append_conf('pg_hba.conf',
+$node->replace_conf('pg_hba.conf',
 	qq{local all all ldap ldapserver=$ldap_server ldapport=$ldap_port ldapbasedn="$ldap_basedn" ldapbinddn="$ldap_rootdn" ldapbindpasswd="$ldap_rootpw"}
 );
 $node->restart;

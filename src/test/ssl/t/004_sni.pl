@@ -80,8 +80,7 @@ my $connstr =
 		"$verify_connstr host=common-name.pg-ssltest.test",
 		'reload enables SNI with the per-host passphrase command');
 
-	ok(unlink($node->data_dir . '/pg_hosts.conf'));
-	$node->append_conf('pg_hosts.conf', '');
+	$node->replace_conf('pg_hosts.conf', '');
 	$node->append_conf('postgresql.conf', 'ssl_sni = off');
 	$ssl_server->switch_server_cert($node, certfile => 'server-cn-only');
 }
@@ -133,8 +132,7 @@ common-name.pg-ssltest.test server-cn-only.crt server-cn-only.key
 	$node->connect_ok("$verify_connstr host=192.0.2.1 sslsni=0",
 		'successful retry serves the configured certificate');
 
-	ok(unlink($node->data_dir . '/pg_hosts.conf'));
-	$node->append_conf('pg_hosts.conf', '');
+	$node->replace_conf('pg_hosts.conf', '');
 	$ssl_server->switch_server_cert($node, certfile => 'server-cn-only');
 }
 
@@ -225,8 +223,7 @@ $node->connect_ok(
 	"pg_hosts.conf: connect to default with sslmode=require");
 
 # Use multiple hostnames for a single configuration
-ok(unlink($node->data_dir . '/pg_hosts.conf'));
-$node->append_conf('pg_hosts.conf',
+$node->replace_conf('pg_hosts.conf',
 	"example.org,example.com,example.net server-cn-only+server_ca.crt server-cn-only.key root_ca.crt"
 );
 $node->reload;
@@ -246,8 +243,7 @@ $node->connect_fails(
 	expected_stderr => qr/unrecognized name/);
 
 # Test @-inclusion of hostnames.
-ok(unlink($node->data_dir . '/pg_hosts.conf'));
-$node->append_conf('pg_hosts.conf',
+$node->replace_conf('pg_hosts.conf',
 	'example.org,@hostnames.txt server-cn-only+server_ca.crt server-cn-only.key root_ca.crt'
 );
 $node->append_conf(
@@ -272,8 +268,7 @@ $node->connect_fails(
 	expected_stderr => qr/unrecognized name/);
 
 # Add an incorrect entry specifying a default entry combined with hostnames
-ok(unlink($node->data_dir . '/pg_hosts.conf'));
-$node->append_conf('pg_hosts.conf',
+$node->replace_conf('pg_hosts.conf',
 	"example.org,*,example.net server-cn-only+server_ca.crt server-cn-only.key root_ca.crt"
 );
 my $result = $node->restart(fail_ok => 1);
@@ -282,8 +277,7 @@ is($result, 0,
 );
 
 # Add incorrect duplicate entries.
-ok(unlink($node->data_dir . '/pg_hosts.conf'));
-$node->append_conf(
+$node->replace_conf(
 	'pg_hosts.conf', qq{
 * server-cn-only.crt server-cn-only.key
 * server-cn-only.crt server-cn-only.key
@@ -291,8 +285,7 @@ $node->append_conf(
 $result = $node->restart(fail_ok => 1);
 is($result, 0, 'pg_hosts.conf: restart fails with two default entries');
 
-ok(unlink($node->data_dir . '/pg_hosts.conf'));
-$node->append_conf(
+$node->replace_conf(
 	'pg_hosts.conf', qq{
 /no_sni/ server-cn-only.crt server-cn-only.key
 /no_sni/ server-cn-only.crt server-cn-only.key
@@ -300,8 +293,7 @@ $node->append_conf(
 $result = $node->restart(fail_ok => 1);
 is($result, 0, 'pg_hosts.conf: restart fails with two no_sni entries');
 
-ok(unlink($node->data_dir . '/pg_hosts.conf'));
-$node->append_conf(
+$node->replace_conf(
 	'pg_hosts.conf', qq{
 example.org server-cn-only.crt server-cn-only.key
 example.net server-cn-only.crt server-cn-only.key
@@ -310,8 +302,7 @@ example.org server-cn-only.crt server-cn-only.key
 $result = $node->restart(fail_ok => 1);
 is($result, 0,
 	'pg_hosts.conf: restart fails with two identical hostname entries');
-ok(unlink($node->data_dir . '/pg_hosts.conf'));
-$node->append_conf(
+$node->replace_conf(
 	'pg_hosts.conf', qq{
 example.org server-cn-only.crt server-cn-only.key
 example.net,example.com,Example.org server-cn-only.crt server-cn-only.key
@@ -322,8 +313,7 @@ is($result, 0,
 );
 
 # Modify pg_hosts.conf to no longer have the default host entry.
-ok(unlink($node->data_dir . '/pg_hosts.conf'));
-$node->append_conf('pg_hosts.conf',
+$node->replace_conf('pg_hosts.conf',
 	"example.org server-cn-only+server_ca.crt server-cn-only.key root_ca.crt"
 );
 $node->restart;
@@ -420,8 +410,7 @@ $node->reload;
 
 # Reconfigure with broken configuration for the key passphrase, the server
 # should not start up
-ok(unlink($node->data_dir . '/pg_hosts.conf'));
-$node->append_conf('pg_hosts.conf',
+$node->replace_conf('pg_hosts.conf',
 	'localhost server-cn-only.crt server-password.key root+client_ca.crt "echo wrongpassword" on'
 );
 $result = $node->restart(fail_ok => 1);
@@ -430,8 +419,7 @@ is($result, 0,
 );
 
 # Reconfigure again but with the correct passphrase set
-ok(unlink($node->data_dir . '/pg_hosts.conf'));
-$node->append_conf('pg_hosts.conf',
+$node->replace_conf('pg_hosts.conf',
 	'localhost server-cn-only.crt server-password.key root+client_ca.crt "echo secret1" on'
 );
 $result = $node->restart(fail_ok => 1);
@@ -460,8 +448,7 @@ $node->connect_ok(
 # Test reloading a passphrase protected key without reloading support in the
 # passphrase hook. Restarting should not give any errors in the log, but the
 # subsequent reload should fail with an error regarding reloading.
-ok(unlink($node->data_dir . '/pg_hosts.conf'));
-$node->append_conf('pg_hosts.conf',
+$node->replace_conf('pg_hosts.conf',
 	'localhost server-cn-only.crt server-password.key root+client_ca.crt "echo secret1" off'
 );
 $node_loglocation = -s $node->logfile;
@@ -505,8 +492,7 @@ SKIP:
 }
 
 # Configure with only non-SNI connections allowed
-ok(unlink($node->data_dir . '/pg_hosts.conf'));
-$node->append_conf('pg_hosts.conf',
+$node->replace_conf('pg_hosts.conf',
 	"/no_sni/ server-cn-only.crt server-cn-only.key");
 $node->restart;
 
@@ -521,13 +507,10 @@ $node->connect_fails(
 
 # Test client CAs
 
-# pg_hosts configuration
-ok(unlink($node->data_dir . '/pg_hosts.conf'));
-
-# Neither ssl_ca_file nor the default host should have any effect whatsoever on
-# the following tests.
+# pg_hosts configuration; Neither ssl_ca_file nor the default host should have
+# any effect whatsoever on the following tests.
 $node->append_conf('postgresql.conf', "ssl_ca_file = 'root+client_ca.crt'");
-$node->append_conf('pg_hosts.conf',
+$node->replace_conf('pg_hosts.conf',
 	'* server-cn-only.crt server-cn-only.key root+client_ca.crt');
 
 # example.org has an unconfigured CA.
@@ -591,18 +574,14 @@ $node->connect_fails(
 	"host: 'example.com', ca: 'root+client_ca.crt': connect fails with revoked client cert",
 	expected_stderr => qr/certificate revoked/);
 
-# pg_hosts configuration with useless data at EOL
-ok(unlink($node->data_dir . '/pg_hosts.conf'));
-# example.org has an unconfigured CA.
-$node->append_conf('pg_hosts.conf',
+# pg_hosts configuration with useless data at EOL, example.org has an unconfigured CA.
+$node->replace_conf('pg_hosts.conf',
 	'example.org server-cn-only.crt server-cn-only.key root+client_ca.crt "cmd" on TRAILING_TEXT MORE_TEXT'
 );
 $result = $node->restart(fail_ok => 1);
 is($result, 0, 'pg_hosts.conf: restart fails with extra data at EOL');
-# pg_hosts configuration with useless data at EOL
-ok(unlink($node->data_dir . '/pg_hosts.conf'));
-# example.org has an unconfigured CA.
-$node->append_conf('pg_hosts.conf',
+# pg_hosts configuration with useless data at EOL, example.org has an unconfigured CA.
+$node->replace_conf('pg_hosts.conf',
 	'example.org server-cn-only.crt server-cn-only.key root+client_ca.crt "cmd" notabooleanvalue'
 );
 $result = $node->restart(fail_ok => 1);

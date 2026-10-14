@@ -799,6 +799,30 @@ sub append_conf
 
 =pod
 
+=item $node->replace_conf(filename, str)
+
+A shortcut method to rewriting the configuration file.
+
+Does no validation or sanity checking. Does not reload the configuration
+after writing.
+
+A newline is automatically appended to the string
+
+=cut
+
+sub replace_conf
+{
+	my ($self, $filename, $str) = @_;
+
+	my $conffile = $self->data_dir . '/' . $filename;
+	unlink($conffile) or croak("unable to delete $conffile");
+	$self->append_conf($filename, $str);
+
+	return;
+}
+
+=pod
+
 =item $node->adjust_conf(filename, setting, value, skip_equals)
 
 Modify the named config file setting with the value. If the value is undefined,

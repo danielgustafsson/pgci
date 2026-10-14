@@ -168,8 +168,7 @@ sub test_query
 	return;
 }
 
-unlink($node->data_dir . '/pg_hba.conf');
-$node->append_conf(
+$node->replace_conf(
 	'pg_hba.conf',
 	qq{
 local all test2 scram-sha-256
@@ -313,8 +312,7 @@ test_query(
 	'gssencmode=require',
 	'testing system_user with parallel workers');
 
-unlink($node->data_dir . '/pg_hba.conf');
-$node->append_conf(
+$node->replace_conf(
 	'pg_hba.conf',
 	qq{
     local all test2 scram-sha-256
@@ -503,8 +501,7 @@ $node->connect_ok(
 	  . " user=test1 host=$host hostaddr=$hostaddr gssencmode=require require_auth=gss,scram-sha-256",
 	"multiple authentication types requested, works with GSS encryption");
 
-unlink($node->data_dir . '/pg_hba.conf');
-$node->append_conf(
+$node->replace_conf(
 	'pg_hba.conf',
 	qq{
     local all test2 scram-sha-256
@@ -595,8 +592,7 @@ like($psql_out, qr/^$/,
 );
 
 truncate($node->data_dir . '/pg_ident.conf', 0);
-unlink($node->data_dir . '/pg_hba.conf');
-$node->append_conf(
+$node->replace_conf(
 	'pg_hba.conf',
 	qq{
     local all test2 scram-sha-256
@@ -630,8 +626,7 @@ test_query(
 
 # Reset pg_hba.conf, and cause a usermap failure with an authentication
 # that has passed.
-unlink($node->data_dir . '/pg_hba.conf');
-$node->append_conf(
+$node->replace_conf(
 	'pg_hba.conf',
 	qq{
     local all test2 scram-sha-256

@@ -74,8 +74,7 @@ note "use ldapbindpasswd";
 
 $ENV{"PGPASSWORD"} = 'secret1';
 
-unlink($node->data_dir . '/pg_hba.conf');
-$node->append_conf('pg_hba.conf',
+$node->replace_conf('pg_hba.conf',
 	qq{local all all ldap ldapserver=$ldap_server ldapport=$ldap_port ldapbasedn="$ldap_basedn" ldapbinddn="$ldap_rootdn" ldapbindpasswd=wrong}
 );
 $node->restart;
@@ -83,8 +82,7 @@ $node->restart;
 test_access($node, 'test1', 2,
 	'search+bind authentication fails with wrong ldapbindpasswd');
 
-unlink($node->data_dir . '/pg_hba.conf');
-$node->append_conf('pg_hba.conf',
+$node->replace_conf('pg_hba.conf',
 	qq{local all all ldap ldapserver=$ldap_server ldapport=$ldap_port ldapbasedn="$ldap_basedn" ldapbinddn="$ldap_rootdn" ldapbindpasswd="$clear_ldap_rootpw"}
 );
 $node->restart;
@@ -92,8 +90,7 @@ $node->restart;
 test_access($node, 'test1', 2,
 	'search+bind authentication fails with clear password');
 
-unlink($node->data_dir . '/pg_hba.conf');
-$node->append_conf('pg_hba.conf',
+$node->replace_conf('pg_hba.conf',
 	qq{local all all ldap ldapserver=$ldap_server ldapport=$ldap_port ldapbasedn="$ldap_basedn" ldapbinddn="$ldap_rootdn" ldapbindpasswd="$rot13_ldap_rootpw"}
 );
 $node->restart;

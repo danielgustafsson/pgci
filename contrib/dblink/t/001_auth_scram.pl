@@ -69,16 +69,13 @@ my $rolpassword = $node1->safe_psql('postgres',
 	qq"SELECT rolpassword FROM pg_authid WHERE rolname = '$user';");
 $node2->safe_psql('postgres', qq"ALTER ROLE $user PASSWORD '$rolpassword'");
 
-unlink($node1->data_dir . '/pg_hba.conf');
-unlink($node2->data_dir . '/pg_hba.conf');
-
-$node1->append_conf(
+$node1->replace_conf(
 	'pg_hba.conf', qq{
 local   db0             all                                     scram-sha-256
 local   db1             all                                     scram-sha-256
 }
 );
-$node2->append_conf(
+$node2->replace_conf(
 	'pg_hba.conf', qq{
 local   db2             all                                     scram-sha-256
 }
@@ -120,16 +117,13 @@ test_fdw_auth_with_invalid_overwritten_require_auth($fdw_invalid_server);
 }
 
 # Ensure that trust connections fail without superuser opt-in.
-unlink($node1->data_dir . '/pg_hba.conf');
-unlink($node2->data_dir . '/pg_hba.conf');
-
-$node1->append_conf(
+$node1->replace_conf(
 	'pg_hba.conf', qq{
 local   db0             all                                     scram-sha-256
 local   db1             all                                     trust
 }
 );
-$node2->append_conf(
+$node2->replace_conf(
 	'pg_hba.conf', qq{
 local   all             all                                     password
 }

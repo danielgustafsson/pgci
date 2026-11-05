@@ -105,16 +105,13 @@ SKIP:
 	skip "test requires Unix-domain sockets", 4 if !$use_unix_sockets;
 
 	# Ensure that trust connections fail without superuser opt-in.
-	unlink($node1->data_dir . '/pg_hba.conf');
-	unlink($node2->data_dir . '/pg_hba.conf');
-
-	$node1->append_conf(
+	$node1->replace_conf(
 		'pg_hba.conf', qq{
 local   db0             all                                     scram-sha-256
 local   db1             all                                     trust
 }
 	);
-	$node2->append_conf(
+	$node2->replace_conf(
 		'pg_hba.conf', qq{
 local   all             all                                     password
 }
@@ -182,8 +179,7 @@ sub setup_pghba
 {
 	my ($node) = @_;
 
-	unlink($node->data_dir . '/pg_hba.conf');
-	$node->append_conf(
+	$node->replace_conf(
 		'pg_hba.conf', qq{
 	local   all             all                                     scram-sha-256
 	host    all             all             $hostaddr/32            scram-sha-256

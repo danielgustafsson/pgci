@@ -78,8 +78,7 @@ sub test_access
 
 note "simple bind";
 
-unlink($node->data_dir . '/pg_hba.conf');
-$node->append_conf('pg_hba.conf',
+$node->replace_conf('pg_hba.conf',
 	qq{local all all ldap ldapserver=$ldap_server ldapport=$ldap_port ldapprefix="uid=" ldapsuffix=",dc=example,dc=net"}
 );
 $node->restart;
@@ -110,8 +109,7 @@ $node->connect_fails("user=test1 require_auth=scram-sha-256",
 
 note "search+bind";
 
-unlink($node->data_dir . '/pg_hba.conf');
-$node->append_conf('pg_hba.conf',
+$node->replace_conf('pg_hba.conf',
 	qq{local all all ldap ldapserver=$ldap_server ldapport=$ldap_port ldapbasedn="$ldap_basedn"}
 );
 $node->restart;
@@ -131,8 +129,7 @@ test_access(
 
 note "multiple servers";
 
-unlink($node->data_dir . '/pg_hba.conf');
-$node->append_conf('pg_hba.conf',
+$node->replace_conf('pg_hba.conf',
 	qq{local all all ldap ldapserver="$ldap_server $ldap_server" ldapport=$ldap_port ldapbasedn="$ldap_basedn"}
 );
 $node->restart;
@@ -147,8 +144,7 @@ test_access($node, 'test1', 0, 'search+bind authentication succeeds');
 
 note "LDAP URLs";
 
-unlink($node->data_dir . '/pg_hba.conf');
-$node->append_conf('pg_hba.conf',
+$node->replace_conf('pg_hba.conf',
 	qq{local all all ldap ldapurl="$ldap_url" ldapprefix="uid=" ldapsuffix=",dc=example,dc=net"}
 );
 $node->restart;
@@ -163,8 +159,7 @@ $ENV{"PGPASSWORD"} = 'secret1';
 test_access($node, 'test1', 0,
 	'simple bind with LDAP URL authentication succeeds');
 
-unlink($node->data_dir . '/pg_hba.conf');
-$node->append_conf('pg_hba.conf',
+$node->replace_conf('pg_hba.conf',
 	qq{local all all ldap ldapurl="$ldap_url/$ldap_basedn?uid?sub"});
 $node->restart;
 
@@ -180,8 +175,7 @@ test_access($node, 'test1', 0,
 
 note "search filters";
 
-unlink($node->data_dir . '/pg_hba.conf');
-$node->append_conf('pg_hba.conf',
+$node->replace_conf('pg_hba.conf',
 	qq{local all all ldap ldapserver=$ldap_server ldapport=$ldap_port ldapbasedn="$ldap_basedn" ldapsearchfilter="(|(uid=\$username)(mail=\$username))"}
 );
 $node->restart;
@@ -205,8 +199,7 @@ test_access(
 
 note "search filters in LDAP URLs";
 
-unlink($node->data_dir . '/pg_hba.conf');
-$node->append_conf('pg_hba.conf',
+$node->replace_conf('pg_hba.conf',
 	qq{local all all ldap ldapurl="$ldap_url/$ldap_basedn??sub?(|(uid=\$username)(mail=\$username))"}
 );
 $node->restart;
@@ -219,8 +212,7 @@ test_access($node, 'test2@example.net', 0, 'search filter finds by mail');
 # This is not documented: You can combine ldapurl and other ldap*
 # settings.  ldapurl is always parsed first, then the other settings
 # override.  It might be useful in a case like this.
-unlink($node->data_dir . '/pg_hba.conf');
-$node->append_conf('pg_hba.conf',
+$node->replace_conf('pg_hba.conf',
 	qq{local all all ldap ldapurl="$ldap_url/$ldap_basedn??sub" ldapsearchfilter="(|(uid=\$username)(mail=\$username))"}
 );
 $node->restart;
@@ -231,8 +223,7 @@ test_access($node, 'test1', 0, 'combined LDAP URL and search filter');
 note "diagnostic message";
 
 # note bad ldapprefix with a question mark that triggers a diagnostic message
-unlink($node->data_dir . '/pg_hba.conf');
-$node->append_conf('pg_hba.conf',
+$node->replace_conf('pg_hba.conf',
 	qq{local all all ldap ldapserver=$ldap_server ldapport=$ldap_port ldapprefix="?uid=" ldapsuffix=""}
 );
 $node->restart;
@@ -243,8 +234,7 @@ test_access($node, 'test1', 2, 'any attempt fails due to bad search pattern');
 note "TLS";
 
 # request StartTLS with ldaptls=1
-unlink($node->data_dir . '/pg_hba.conf');
-$node->append_conf('pg_hba.conf',
+$node->replace_conf('pg_hba.conf',
 	qq{local all all ldap ldapserver=$ldap_server ldapport=$ldap_port ldapbasedn="$ldap_basedn" ldapsearchfilter="(uid=\$username)" ldaptls=1}
 );
 $node->restart;
@@ -253,8 +243,7 @@ $ENV{"PGPASSWORD"} = 'secret1';
 test_access($node, 'test1', 0, 'StartTLS');
 
 # request LDAPS with ldapscheme=ldaps
-unlink($node->data_dir . '/pg_hba.conf');
-$node->append_conf('pg_hba.conf',
+$node->replace_conf('pg_hba.conf',
 	qq{local all all ldap ldapserver=$ldap_server ldapscheme=ldaps ldapport=$ldaps_port ldapbasedn="$ldap_basedn" ldapsearchfilter="(uid=\$username)"}
 );
 $node->restart;
@@ -263,8 +252,7 @@ $ENV{"PGPASSWORD"} = 'secret1';
 test_access($node, 'test1', 0, 'LDAPS');
 
 # request LDAPS with ldapurl=ldaps://...
-unlink($node->data_dir . '/pg_hba.conf');
-$node->append_conf('pg_hba.conf',
+$node->replace_conf('pg_hba.conf',
 	qq{local all all ldap ldapurl="$ldaps_url/$ldap_basedn??sub?(uid=\$username)"}
 );
 $node->restart;
@@ -273,8 +261,7 @@ $ENV{"PGPASSWORD"} = 'secret1';
 test_access($node, 'test1', 0, 'LDAPS with URL');
 
 # bad combination of LDAPS and StartTLS
-unlink($node->data_dir . '/pg_hba.conf');
-$node->append_conf('pg_hba.conf',
+$node->replace_conf('pg_hba.conf',
 	qq{local all all ldap ldapurl="$ldaps_url/$ldap_basedn??sub?(uid=\$username)" ldaptls=1}
 );
 $node->restart;

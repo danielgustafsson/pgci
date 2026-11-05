@@ -379,8 +379,7 @@ SKIP:
 
 	# Setup pg_hba configuration so that logical replication connection without
 	# password is not allowed.
-	unlink($node_publisher1->data_dir . '/pg_hba.conf');
-	$node_publisher1->append_conf('pg_hba.conf',
+	$node_publisher1->replace_conf('pg_hba.conf',
 		qq{local all 				regress_test_user 	md5});
 	$node_publisher1->reload;
 

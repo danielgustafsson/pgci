@@ -504,7 +504,10 @@ pg_base64url_encode(const char *src, size_t len, char *dst)
  * pg_base64_decode_internal
  *
  * Helper for decoding base64 or base64url. When url is passed as true the
- * input will be assumed to be encoded using base64url.
+ * input will be assumed to be encoded using base64url. Decoding base64url
+ * will check for trailing data after the padding which isn't allowed per the
+ * specification. Future versions of PostgreSQL will also reject trailing data
+ * in regular base64.
  */
 static uint64
 pg_base64_decode_internal(const char *src, size_t len, char *dst, bool url)
@@ -537,7 +540,7 @@ pg_base64_decode_internal(const char *src, size_t len, char *dst, bool url)
 		if (c == '=')
 		{
 			/* end sequence */
-			if (!end)
+			if ((!url && !end) || (url && (!end || pos != 3)))
 			{
 				if (pos == 2)
 					end = 1;
@@ -556,7 +559,7 @@ pg_base64_decode_internal(const char *src, size_t len, char *dst, bool url)
 		else
 		{
 			b = -1;
-			if (c > 0 && c < 127)
+			if ((!url && c > 0 && c < 127) || (url && c > 0 && c < 127 && !end))
 				b = b64lookup[(unsigned char) c];
 			if (b < 0)
 			{
@@ -583,12 +586,12 @@ pg_base64_decode_internal(const char *src, size_t len, char *dst, bool url)
 		}
 	}
 
-	if (url && pos == 2)
+	if (url && !end && pos == 2)
 	{
 		buf <<= 12;
 		*p++ = (buf >> 16) & 0xFF;
 	}
-	else if (url && pos == 3)
+	else if (url && !end && pos == 3)
 	{
 		buf <<= 6;
 		*p++ = (buf >> 16) & 0xFF;

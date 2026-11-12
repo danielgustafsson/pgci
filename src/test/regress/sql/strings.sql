@@ -827,6 +827,10 @@ SELECT decode('1234567890abcdef00', 'hex');
 SELECT encode(('\x' || repeat('1234567890abcdef0001', 7))::bytea, 'base64');
 SELECT decode(encode(('\x' || repeat('1234567890abcdef0001', 7))::bytea,
                      'base64'), 'base64');
+-- nothing but whitespace may follow base64 padding
+SELECT decode('YQ=', 'base64url');  -- error
+SELECT decode('YQ===', 'base64url');  -- error
+SELECT decode('YQ=A', 'base64url');  -- error
 SELECT encode('\x1234567890abcdef00', 'escape');
 SELECT decode(encode('\x1234567890abcdef00', 'escape'), 'escape');
 

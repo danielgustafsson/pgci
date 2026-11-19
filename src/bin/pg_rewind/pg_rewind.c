@@ -452,9 +452,11 @@ main(int argc, char **argv)
 		}
 		else
 		{
-			/* the last common checkpoint record must be part of target WAL */
-			Assert(target_wal_endrec == divergerec);
-
+			/*
+			 * Target stopped at or before the divergence point, so it is
+			 * an ancestor and needs no rewind.  Stopping earlier is fine
+			 * too, for example after an older base backup of the primary.
+			 */
 			rewind_needed = false;
 		}
 	}

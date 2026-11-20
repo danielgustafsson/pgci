@@ -401,6 +401,12 @@ LZ4Stream_init(LZ4State *state, bool compressing)
 		state->buffer = pg_malloc(state->buflen);
 		state->outbuflen = DEFAULT_IO_BUFFER_SIZE;
 		state->outbuf = pg_malloc(state->outbuflen);
+
+		/*
+		 * An empty file is a valid empty stream: the writer creates one when
+		 * nothing is written, e.g. for an empty large object.
+		 */
+		state->frame_finished = true;
 	}
 
 	state->inited = true;
@@ -673,25 +679,31 @@ LZ4Stream_close(CompressFileHandle *CFH)
 				state->bufdata = 0;
 			}
 
-			status = LZ4F_compressEnd(state->ctx,
-									  state->buffer + state->bufdata,
-									  state->buflen - state->bufdata,
-									  NULL);
-			if (LZ4F_isError(status))
+			if (success)
 			{
-				pg_log_error("could not end compression: %s",
-							 LZ4F_getErrorName(status));
-				success = false;
+				status = LZ4F_compressEnd(state->ctx,
+										  state->buffer + state->bufdata,
+										  state->buflen - state->bufdata,
+										  NULL);
+				if (LZ4F_isError(status))
+				{
+					pg_log_error("could not end compression: %s",
+								 LZ4F_getErrorName(status));
+					success = false;
+				}
+				else
+					state->bufdata += status;
 			}
-			else
-				state->bufdata += status;
 
-			errno = 0;
-			if (fwrite(state->buffer, 1, state->bufdata, state->fp) != state->bufdata)
+			if (success)
 			{
-				errno = (errno) ? errno : ENOSPC;
-				pg_log_error("could not write to output file: %m");
-				success = false;
+				errno = 0;
+				if (fwrite(state->buffer, 1, state->bufdata, state->fp) != state->bufdata)
+				{
+					errno = (errno) ? errno : ENOSPC;
+					pg_log_error("could not write to output file: %m");
+					success = false;
+				}
 			}
 
 			status = LZ4F_freeCompressionContext(state->ctx);

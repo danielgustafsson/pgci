@@ -1,0 +1,9 @@
+-- This test exercises the JOHAB client encoding (KS X 1001:2004 Annex 3).
+-- JOHAB's valid byte ranges differ from EUC-KR: trail bytes may fall within
+-- the ASCII graphic range (0x41-0x7E for Hangul, 0x31-0x7E for the other
+-- categories), including 0x5C which is the ASCII backslash.  The test runs
+-- only in UTF8 databases, since some decoded characters have no equivalent
+-- in other server encodings.
+SELECT getdatabaseencoding() <> 'UTF8' AS skip_test \gset
+\if :skip_test
+\quit

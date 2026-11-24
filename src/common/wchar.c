@@ -409,18 +409,45 @@ pg_wchar2euc_with_len(const pg_wchar *from, unsigned char *to, int len)
 
 
 /*
- * JOHAB
+ * JOHAB (KS X 1001:2004 Annex 3, a.k.a. the 2-byte combinational code)
+ *
+ * Byte ranges per Annex 3 Table 1:
+ *
+ *   Category              Lead byte    Trail byte
+ *   --------------------  -----------  ---------------------
+ *   Hangul syllables      0x84 - 0xD3  0x41 - 0x7E, 0x81 - 0xFE
+ *   User-defined area A   0xD8         0x31 - 0x7E, 0x91 - 0xFE
+ *   Other characters      0xD9 - 0xDE  0x31 - 0x7E, 0x91 - 0xFE
+ *   Hanja                 0xE0 - 0xF9  0x31 - 0x7E, 0x91 - 0xFE
+ *
+ * ASCII (< 0x80) is single-byte.  Lead bytes in the gaps between the ranges
+ * above (0x80-0x83, 0xD4-0xD7, 0xDF, 0xFA-0xFF) are invalid.  Likewise,
+ * trail bytes that fall outside their allowed union are invalid: for Hangul
+ * this excludes 0x00-0x40, 0x7F-0x80, and 0xFF; for the other categories
+ * this excludes 0x00-0x30, 0x7F-0x90, and 0xFF.
+ *
+ * Note that unlike EUC-KR, trail bytes may fall within the ASCII graphic
+ * range (including 0x5C backslash), so callers dealing with JOHAB text
+ * must not assume ASCII bytes are self-synchronizing.
  */
+#define IS_JOHAB_LEAD_HANGUL(c)	((c) >= 0x84 && (c) <= 0xD3)
+#define IS_JOHAB_LEAD_OTHER(c)	\
+	(((c) >= 0xD8 && (c) <= 0xDE) || ((c) >= 0xE0 && (c) <= 0xF9))
+
 static int
 pg_johab_mblen(const unsigned char *s)
 {
-	return pg_euc_mblen(s);
+	if (IS_JOHAB_LEAD_HANGUL(*s) || IS_JOHAB_LEAD_OTHER(*s))
+		return 2;
+	return 1;
 }
 
 static int
 pg_johab_dsplen(const unsigned char *s)
 {
-	return pg_euc_dsplen(s);
+	if (IS_HIGHBIT_SET(*s))
+		return 2;
+	return pg_ascii_dsplen(s);
 }
 
 /*
@@ -1103,25 +1130,35 @@ pg_euctw_verifystr(const unsigned char *s, int len)
 static int
 pg_johab_verifychar(const unsigned char *s, int len)
 {
-	int			l,
-				mbl;
-	unsigned char c;
-
-	l = mbl = pg_johab_mblen(s);
-
-	if (len < l)
-		return -1;
+	unsigned char b1,
+				b2;
 
 	if (!IS_HIGHBIT_SET(*s))
-		return mbl;
+		return 1;
 
-	while (--l > 0)
+	if (len < 2)
+		return -1;
+
+	b1 = s[0];
+	b2 = s[1];
+
+	/*
+	 * Per KS X 1001:2004 Annex 3 Table 1, trailing byte ranges depend on the
+	 * leading byte's category.
+	 */
+	if (IS_JOHAB_LEAD_HANGUL(b1))
 	{
-		c = *++s;
-		if (!IS_EUC_RANGE_VALID(c))
-			return -1;
+		/* Hangul syllables: 0x41-0x7E or 0x81-0xFE */
+		if ((b2 >= 0x41 && b2 <= 0x7E) || (b2 >= 0x81 && b2 <= 0xFE))
+			return 2;
 	}
-	return mbl;
+	else if (IS_JOHAB_LEAD_OTHER(b1))
+	{
+		/* User-defined, other characters, Hanja: 0x31-0x7E or 0x91-0xFE */
+		if ((b2 >= 0x31 && b2 <= 0x7E) || (b2 >= 0x91 && b2 <= 0xFE))
+			return 2;
+	}
+	return -1;
 }
 
 static int
@@ -1848,7 +1885,7 @@ const pg_wchar_tbl pg_wchar_table[] = {
 	[PG_GBK] = {0, 0, pg_gbk_mblen, pg_gbk_dsplen, pg_gbk_verifychar, pg_gbk_verifystr, 2},
 	[PG_UHC] = {0, 0, pg_uhc_mblen, pg_uhc_dsplen, pg_uhc_verifychar, pg_uhc_verifystr, 2},
 	[PG_GB18030] = {0, 0, pg_gb18030_mblen, pg_gb18030_dsplen, pg_gb18030_verifychar, pg_gb18030_verifystr, 4},
-	[PG_JOHAB] = {0, 0, pg_johab_mblen, pg_johab_dsplen, pg_johab_verifychar, pg_johab_verifystr, 3},
+	[PG_JOHAB] = {0, 0, pg_johab_mblen, pg_johab_dsplen, pg_johab_verifychar, pg_johab_verifystr, 2},
 	[PG_SHIFT_JIS_2004] = {0, 0, pg_sjis_mblen, pg_sjis_dsplen, pg_sjis_verifychar, pg_sjis_verifystr, 2},
 };
 

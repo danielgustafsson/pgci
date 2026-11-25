@@ -99,6 +99,7 @@
 #include "utils/date.h"
 #include "utils/datetime.h"
 #include "utils/lsyscache.h"
+#include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
 #include "utils/xml.h"
@@ -2543,6 +2544,7 @@ map_sql_value_to_xml_value(Datum value, Oid type, bool xml_escape_strings)
 		Datum	   *elem_values;
 		bool	   *elem_nulls;
 		StringInfoData buf;
+		MemoryContext elemcxt;
 		int			i;
 
 		array = DatumGetArrayTypeP(value);
@@ -2556,17 +2558,34 @@ map_sql_value_to_xml_value(Datum value, Oid type, bool xml_escape_strings)
 
 		initStringInfo(&buf);
 
+		/* Free per-element garbage, which can be large, after each element */
+		elemcxt = AllocSetContextCreate(CurrentMemoryContext,
+										"map_sql_value_to_xml_value temporary cxt",
+										ALLOCSET_DEFAULT_SIZES);
+
 		for (i = 0; i < num_elems; i++)
 		{
+			char	   *elemstr;
+			MemoryContext oldcxt;
+
+			CHECK_FOR_INTERRUPTS();
+
 			if (elem_nulls[i])
 				continue;
+
+			oldcxt = MemoryContextSwitchTo(elemcxt);
+			elemstr = map_sql_value_to_xml_value(elem_values[i],
+												 elmtype, true);
+			MemoryContextSwitchTo(oldcxt);
+
 			appendStringInfoString(&buf, "<element>");
-			appendStringInfoString(&buf,
-								   map_sql_value_to_xml_value(elem_values[i],
-															  elmtype, true));
+			appendStringInfoString(&buf, elemstr);
 			appendStringInfoString(&buf, "</element>");
+
+			MemoryContextReset(elemcxt);
 		}
 
+		MemoryContextDelete(elemcxt);
 		pfree(elem_values);
 		pfree(elem_nulls);
 
@@ -2975,6 +2994,7 @@ cursor_to_xml(PG_FUNCTION_ARGS)
 
 	StringInfoData result;
 	Portal		portal;
+	MemoryContext rowcxt;
 	uint64		i;
 
 	initStringInfo(&result);
@@ -2993,9 +3013,26 @@ cursor_to_xml(PG_FUNCTION_ARGS)
 				 errmsg("cursor \"%s\" does not exist", name)));
 
 	SPI_cursor_fetch(portal, true, count);
+
+	rowcxt = AllocSetContextCreate(CurrentMemoryContext,
+								   "cursor_to_xml temporary cxt",
+								   ALLOCSET_DEFAULT_SIZES);
+
 	for (i = 0; i < SPI_processed; i++)
+	{
+		MemoryContext oldcxt;
+
+		CHECK_FOR_INTERRUPTS();
+
+		oldcxt = MemoryContextSwitchTo(rowcxt);
 		SPI_sql_row_to_xmlelement(i, &result, NULL, nulls,
 								  tableforest, targetns, true);
+		MemoryContextSwitchTo(oldcxt);
+
+		MemoryContextReset(rowcxt);
+	}
+
+	MemoryContextDelete(rowcxt);
 
 	SPI_finish();
 
@@ -3059,6 +3096,7 @@ query_to_xml_internal(const char *query, char *tablename,
 {
 	StringInfo	result;
 	char	   *xmltn;
+	MemoryContext rowcxt;
 	uint64		i;
 
 	if (tablename)
@@ -3084,9 +3122,25 @@ query_to_xml_internal(const char *query, char *tablename,
 	if (xmlschema)
 		appendStringInfo(result, "%s\n\n", xmlschema);
 
+	rowcxt = AllocSetContextCreate(CurrentMemoryContext,
+								   "query_to_xml_internal temporary cxt",
+								   ALLOCSET_DEFAULT_SIZES);
+
 	for (i = 0; i < SPI_processed; i++)
+	{
+		MemoryContext oldcxt;
+
+		CHECK_FOR_INTERRUPTS();
+
+		oldcxt = MemoryContextSwitchTo(rowcxt);
 		SPI_sql_row_to_xmlelement(i, result, tablename, nulls,
 								  tableforest, targetns, top_level);
+		MemoryContextSwitchTo(oldcxt);
+
+		MemoryContextReset(rowcxt);
+	}
+
+	MemoryContextDelete(rowcxt);
 
 	if (!tableforest)
 		xmldata_root_element_end(result, xmltn);
@@ -4354,6 +4408,7 @@ xml_xpathobjtoxmlarray(xmlXPathObjectPtr xpathobj,
 
 					for (i = 0; i < result; i++)
 					{
+						CHECK_FOR_INTERRUPTS();
 						datum = PointerGetDatum(xml_xmlnodetoxmltype(xpathobj->nodesetval->nodeTab[i],
 																	 xmlerrcxt));
 						(void) accumArrayResult(astate, datum, false,
@@ -5079,6 +5134,7 @@ XmlTableGetValue(TableFuncScanState *state, int colnum,
 					initStringInfo(&str);
 					for (int i = 0; i < count; i++)
 					{
+						CHECK_FOR_INTERRUPTS();
 						textstr =
 							xml_xmlnodetoxmltype(xpathobj->nodesetval->nodeTab[i],
 												 xtCxt->xmlerrcxt);
